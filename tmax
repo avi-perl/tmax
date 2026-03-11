@@ -72,8 +72,8 @@ set -g pane-border-style "fg=colour238"
 # ── Window tab styling ─────────────────────────────────────────────────────────
 set -g window-status-separator " "
 set -g status-interval 1
-set -g window-status-format         "#[fg=colour234]#[fg=#{@tmax_color},bg=colour235] #{@tmax_label} #{?#{==:#{window_index},0},,#[fg=colour244\,bg=colour235] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},,#[fg=colour1]✸ #[fg=colour244]}#{window_name} }#[bg=colour232]"
-set -g window-status-current-format "#[fg=colour240]#[fg=#{@tmax_color},bg=#{@tmax_dark_color},bold] #{@tmax_label} #{?#{==:#{window_index},0},,#[bg=#{@tmax_color}\,fg=colour235\,bold] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},,#[fg=colour1]✸ #[fg=colour235]}#{window_name} }#[bg=colour232,nobold]"
+set -g window-status-format         "#[fg=colour234]#[fg=#{@tmax_color},bg=colour235] #{@tmax_label} #{?#{==:#{window_index},0},,#[fg=colour244\,bg=colour235] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},#{?#{@tmax_indicator},#[fg=colour1]■ #[fg=colour244],},#[fg=colour2]▶︎ #[fg=colour244]}#{window_name} }#[bg=colour232]"
+set -g window-status-current-format "#[fg=colour240]#[fg=#{@tmax_color},bg=#{@tmax_dark_color},bold] #{@tmax_label} #{?#{==:#{window_index},0},,#[bg=#{@tmax_color}\,fg=colour235\,bold] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},#{?#{@tmax_indicator},#[fg=colour1]■ #[fg=colour235],},#[fg=colour2]▶︎ #[fg=colour235]}#{window_name} }#[bg=colour232,nobold]"
 
 # ── No prefix — Alt keys only ─────────────────────────────────────────────────
 unbind C-b
@@ -169,12 +169,14 @@ case "${1:-start}" in
 Usage: tmax [command]
 
 Commands:
-  start            Start or attach to session (default)
-  install, -i      Full setup: generate config, apply to running session,
-                   and add tmax to PATH if not already present.
-                   Run once after cloning, and after any config changes.
-  kill, -k         Kill the running session and all tabs
-  help, --help     Show this help
+  start               Start or attach to session (default)
+  install, -i         Full setup: generate config, apply to running session,
+                      and add tmax to PATH if not already present.
+                      Run once after cloning, and after any config changes.
+  shell-integration   Print shell hook snippet to capture command exit codes.
+                      Add to ~/.bashrc or ~/.zshrc:  eval "\$(tmax shell-integration)"
+  kill, -k            Kill the running session and all tabs
+  help, --help        Show this help
 
 Keybindings (no prefix required):
   Alt+h            Go to home tab
@@ -183,6 +185,28 @@ Keybindings (no prefix required):
   Alt+r            Rename current tab
   Alt+x            Close tab (or detach if on home)
 
+EOF
+        ;;
+
+    shell-integration)
+        cat <<'EOF'
+# tmax shell integration — captures command exit codes and shows ■ on failure
+# Add to ~/.bashrc or ~/.zshrc:  eval "$(tmax shell-integration)"
+_tmax_report_exit() {
+    local rc=$?
+    [[ -n "$TMUX" ]] || return
+    if [[ $rc -eq 0 ]]; then
+        tmux set-option -w @tmax_indicator "" 2>/dev/null || true
+    else
+        tmux set-option -w @tmax_indicator "fail" 2>/dev/null || true
+    fi
+}
+if [[ -n "$BASH_VERSION" ]]; then
+    PROMPT_COMMAND="_tmax_report_exit${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+fi
+if [[ -n "$ZSH_VERSION" ]]; then
+    precmd_functions=(_tmax_report_exit "${precmd_functions[@]}")
+fi
 EOF
         ;;
 
