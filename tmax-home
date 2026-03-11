@@ -4,24 +4,51 @@
 SOCK="tmax"
 SESSION="tmax"
 
+# ANSI codes — globals so they expand correctly inside "..." strings
+R=$'\033[0m'           # reset
+D=$'\033[2m'           # dim
+B=$'\033[1m'           # bold
+RED=$'\033[31m'
+TBG=$'\033[48;5;235m'  # table background (inactive tab colour)
+RT="${R}${TBG}"        # reset fg/bold then restore table bg
+
 color_ansi() {
     case "$1" in
-        colour1)   printf '\033[31m'       ;;  # red
-        colour2)   printf '\033[32m'       ;;  # green
-        colour3)   printf '\033[33m'       ;;  # yellow
-        colour4)   printf '\033[34m'       ;;  # blue
-        colour5)   printf '\033[35m'       ;;  # magenta
-        colour6)   printf '\033[36m'       ;;  # cyan
-        colour208) printf '\033[38;5;208m' ;;  # orange
-        colour82)  printf '\033[38;5;82m'  ;;  # lime
-        colour165) printf '\033[38;5;165m' ;;  # purple
-        *)         printf '\033[37m'       ;;  # white fallback
+        colour1)   printf '\033[31m'       ;;
+        colour2)   printf '\033[32m'       ;;
+        colour3)   printf '\033[33m'       ;;
+        colour4)   printf '\033[34m'       ;;
+        colour5)   printf '\033[35m'       ;;
+        colour6)   printf '\033[36m'       ;;
+        colour208) printf '\033[38;5;208m' ;;
+        colour82)  printf '\033[38;5;82m'  ;;
+        colour165) printf '\033[38;5;165m' ;;
+        *)         printf '\033[37m'       ;;
     esac
 }
 
+# Bright foreground colour → ANSI background (for label badge)
+colour_bg() {
+    case "$1" in
+        colour1)   printf '\033[41m'         ;;
+        colour2)   printf '\033[42m'         ;;
+        colour3)   printf '\033[43m'         ;;
+        colour4)   printf '\033[44m'         ;;
+        colour5)   printf '\033[45m'         ;;
+        colour6)   printf '\033[46m'         ;;
+        colour208) printf '\033[48;5;208m'   ;;
+        colour82)  printf '\033[48;5;82m'    ;;
+        colour165) printf '\033[48;5;165m'   ;;
+        *)         printf '\033[40m'         ;;
+    esac
+}
+
+
+enable_mouse()  { printf '\033[?1000h\033[?1006h'; }
+disable_mouse() { printf '\033[?1000l\033[?1006l'; }
+
 trap '' INT TERM
 
-# Background loop that forces status bar repaints faster than status-interval allows
 _refresh_status() {
     while true; do
         tmux -L "$SOCK" refresh-client -S 2>/dev/null || true
@@ -30,121 +57,162 @@ _refresh_status() {
 }
 _refresh_status &
 _REFRESH_PID=$!
-trap 'kill "$_REFRESH_PID" 2>/dev/null' EXIT
+trap 'disable_mouse; kill "$_REFRESH_PID" 2>/dev/null' EXIT
 
 _last_frame=""
+_WIN_ORDER=()
+_WIN_ROW_START=3  # pane row (1-indexed) of first window entry
 
 draw() {
-    # Build the entire frame before touching the terminal, then write atomically
+    local cols now windows box_w name_w h_inner
+    cols=$(tput cols 2>/dev/null || echo 80)
+    now=$(date +%s)
+
+    windows=$(tmux -L "$SOCK" list-windows -t "$SESSION" \
+        -F "#{window_index}|#{window_name}|#{@tmax_color}|#{window_active}|#{@tmax_start}|#{pane_current_command}|#{@tmax_label}|#{@tmax_bg_tint}" \
+        2>/dev/null) || windows=""
+
+    _WIN_ORDER=()
+    if [[ -n "$windows" ]]; then
+        while IFS='|' read -r idx _rest; do
+            [[ "$idx" == "0" ]] && continue
+            _WIN_ORDER+=("$idx")
+        done <<< "$windows"
+    fi
+
+    box_w=$(( cols - 4 ))
+    (( box_w > 58 )) && box_w=58
+    (( box_w < 30 )) && box_w=30
+    # row: │ sp label(3) sp name(N) sp sp status(4) sp sp uptime(5) sp │ = 21+N
+    name_w=$(( box_w - 21 ))
+    (( name_w < 6 )) && name_w=6
+    h_inner=$(printf '─%.0s' $(seq 1 $(( box_w - 2 ))))
+
     local frame
     frame=$(
-        cols=$(tput cols 2>/dev/null || echo 80)
-        now=$(date +%s)
-        line=$(printf '─%.0s' $(seq 1 $((cols - 4))))
-
-        windows=$(tmux -L "$SOCK" list-windows -t "$SESSION" \
-            -F "#{window_index}|#{window_name}|#{@tmax_color}|#{window_active}|#{@tmax_start}|#{pane_current_command}|#{@tmax_label}" 2>/dev/null) || {
-            printf '\033[?25l\033[H'
-            printf "\n\033[K"
-            printf "  \033[2m(session not found)\033[0m\033[K\n"
-            printf '\033[J'
-            exit 0
-        }
-
-        buf=''
-        buf+=$'\033[?25l\033[H'
+        buf=$'\033[?25l\033[H'
         buf+=$'\n\033[K'
+        buf+="  ${D}╭${h_inner}╮${R}"$'\033[K\n'
 
-        while IFS='|' read -r idx name color active start_ts cmd label; do
-            ansi=$(color_ansi "$color")
-            runtime=""
+        while IFS='|' read -r idx name color active start_ts cmd label bg_tint; do
+            [[ "$idx" == "0" ]] && continue
+
+            lbl_bg=$(colour_bg "$color")
 
             if [[ "$start_ts" =~ ^[0-9]+$ ]]; then
                 elapsed=$(( now - start_ts ))
-                runtime=$(printf "%02d:%02d" $(( elapsed / 3600 )) $(( (elapsed % 3600) / 60 )))
-            fi
-
-            busy=""
-            case "$cmd" in
-                bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home) ;;
-                *) busy="1" ;;
-            esac
-
-            row="  ${ansi}●"$'\033[0m'" "
-            [ -n "$busy" ] && row+=$'\033[31m✸\033[0m '"  "
-
-            if [ "$active" = "1" ]; then
-                row+=$'\033[1m'"${label}: ${name}"$'\033[0m  \033[2m← you are here\033[0m'
+                printf -v runtime '%02d:%02d' $(( elapsed / 3600 )) $(( (elapsed % 3600) / 60 ))
             else
-                row+="${label}: ${name}"
-                [ "$idx" != "0" ] && row+=$'  \033[2m'"Alt+${label}"$'\033[0m'
+                runtime='--:--'
             fi
 
-            [ -n "$runtime" ] && row+=$'  \033[2m'"${runtime}"$'\033[0m'
-            row+=$'\033[K\n'
-            buf+="$row"
+            is_busy=0
+            case "$cmd" in bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home) ;; *) is_busy=1 ;; esac
+
+            if [[ "$active" == 1 ]]; then
+                status="${D}here${RT}"
+                row_text="${B}"
+            elif (( is_busy )); then
+                status="${RED}busy${RT}"
+                row_text=""
+            else
+                status="    "
+                row_text="${D}"
+            fi
+
+            disp_name="$name"
+            (( ${#name} > name_w )) && disp_name="${name:0:$(( name_w - 1 ))}…"
+            printf -v disp_name "%-${name_w}s" "$disp_name"
+
+            # Center label in 3 chars
+            len=${#label}
+            lpad=$(( (3 - len) / 2 ))
+            rpad=$(( 3 - len - lpad ))
+            printf -v disp_label "%${lpad}s%s%${rpad}s" "" "$label" ""
+
+            buf+="  ${D}│${R}${TBG} ${lbl_bg}${B}${disp_label}${RT} ${row_text}${disp_name}${RT}  ${status}  ${D}${runtime}${RT} ${R}${D}│${R}"$'\033[K\n'
         done <<< "$windows"
 
+        buf+="  ${D}╰${h_inner}╯${R}"$'\033[K\n'
+        buf+=$'\n\033[K'
+
+        rule=$(printf '─%.0s' $(seq 1 $(( box_w ))))
+        buf+="  ${D}${rule}${R}"$'\033[K\n'
         buf+=$'\033[K\n'
-        buf+="  "$'\033[2m'"${line}"$'\033[0m\033[K\n'
+        buf+="  Hold ${B}Alt${R} for shortcuts from any tab."$'\033[K\n'
         buf+=$'\033[K\n'
-        buf+=$'  \033[2mAlt+n\033[0m  new    \033[2mAlt+r\033[0m  rename    \033[2mAlt+x\033[0m  close    \033[2mAlt+a-z\033[0m  jump    \033[2ma-z\033[0m  close tab    \033[2mq\033[0m  exit to shell\033[K\n'
-        buf+=$'\033[K\n'
+        if (( cols < 58 )); then
+            buf+="  ${D}1-9${R} jump  ${D}·${R}  ${D}q${R} detach  ${D}·${R}  ${D}M-n${R} new"$'\033[K\n'
+        else
+            buf+="  ${D}M-n${R} new  ${D}·${R}  ${D}M-r${R} rename  ${D}·${R}  ${D}M-x${R} close  ${D}·${R}  ${D}1-9${R} jump  ${D}·${R}  ${D}q${R} detach"$'\033[K\n'
+        fi
+
         printf '%s' "$buf"
         printf '\033[J'
     )
 
-    # Only write to terminal if frame changed
     [[ "$frame" == "$_last_frame" ]] && return
     _last_frame="$frame"
     printf '%s' "$frame"
 }
 
-close_tab() {
+switch_to_tab() {
     local idx="$1"
-    local name
-    name=$(tmux -L "$SOCK" list-windows -t "$SESSION" \
-        -F "#{window_index}|#{window_name}" 2>/dev/null \
-        | awk -F'|' -v i="$idx" '$1==i{print $2}')
-    [ -z "$name" ] && return
-
-    printf '\033[?25h'
-    printf '  Close tab %s "%s"? [y/N] ' "$idx" "$name"
-    local confirm
-    read -r -n 1 confirm 2>/dev/null
-    printf '\n\033[?25l'
-
-    if [[ "$confirm" =~ ^[yY]$ ]]; then
-        tmux -L "$SOCK" kill-window -t "$SESSION:$idx" 2>/dev/null || true
-    fi
+    [[ "$idx" == "0" ]] && return
+    tmux -L "$SOCK" select-window -t "$SESSION:$idx" 2>/dev/null || true
 }
 
-# One-time full clear before entering the no-flash loop
+handle_mouse() {
+    local seq="$1" content btn col row final
+    [[ "$seq" == $'\033['* ]] || return
+    content="${seq:2}"
+    [[ "$content" =~ ^'<'([0-9]+)';'([0-9]+)';'([0-9]+)([Mm]) ]] || return
+    btn="${BASH_REMATCH[1]}" col="${BASH_REMATCH[2]}" row="${BASH_REMATCH[3]}" final="${BASH_REMATCH[4]}"
+    [[ "$final" == "m" || "$btn" != "0" ]] && return
+    list_pos=$(( row - _WIN_ROW_START ))
+    (( list_pos >= 0 && list_pos < ${#_WIN_ORDER[@]} )) && switch_to_tab "${_WIN_ORDER[$list_pos]}"
+}
+
 tput clear 2>/dev/null || printf '\033[2J\033[H'
+enable_mouse
 
 SELF="$(readlink -f "${BASH_SOURCE[0]}")"
 SELF_MTIME=$(stat -c %Y "$SELF" 2>/dev/null)
 
 while true; do
     draw
-    if read -r -s -n 1 -t 0.2 key 2>/dev/null; then
-        case "$key" in
-            q|Q) printf '\033[?25h'; tmux -L "$SOCK" detach-client ;;
-            [a-g]|[i-z])
-                # Convert letter label back to window index (a-g=1-7, i-z=8-25)
-                local ord
-                ord=$(printf '%d' "'$key")
-                if [ "$ord" -le 103 ]; then  # a(97)-g(103)
-                    close_tab $((ord - 96))
-                else                         # i(105)-z(122), h skipped
-                    close_tab $((ord - 97))
-                fi
-                ;;
-        esac
+
+    key=""
+    IFS= read -r -s -N 1 -t 0.2 key 2>/dev/null || true
+
+    if [[ -n "$key" ]]; then
+        if [[ "$key" == $'\033' ]]; then
+            rest="" c=""
+            IFS= read -r -s -N 1 -t 0.05 c 2>/dev/null || true
+            rest="$c"
+            if [[ "$c" == "[" ]]; then
+                while IFS= read -r -s -N 1 -t 0.05 c 2>/dev/null; do
+                    rest+="$c"
+                    [[ "$c" =~ [A-Za-z] ]] && break
+                done
+            fi
+            handle_mouse $'\033'"$rest"
+        else
+            case "$key" in
+                q|Q) printf '\033[?25h'; disable_mouse; tmux -L "$SOCK" detach-client ;;
+                [1-9])
+                    target=$(tmux -L "$SOCK" list-windows -t "$SESSION" \
+                        -F "#{window_index}|#{@tmax_label}" 2>/dev/null \
+                        | awk -F'|' -v k="$key" '$2==k{print $1; exit}')
+                    [[ -n "$target" ]] && switch_to_tab "$target"
+                    ;;
+            esac
+        fi
     fi
-    # Hot-reload: re-exec if script was modified
+
     new_mtime=$(stat -c %Y "$SELF" 2>/dev/null)
     if [[ "$new_mtime" != "$SELF_MTIME" ]]; then
+        disable_mouse
         exec "$SELF"
     fi
 done

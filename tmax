@@ -153,9 +153,9 @@ case "${1:-start}" in
             tmux -L "$SOCK" -f "$CONF" new-session -d -s "$SESSION" -n "home"
             tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_color "colour6"
             tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_dark_color "colour23"
-            tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_bg_tint "#043a3a"
-            tmux -L "$SOCK" set-option -t "$SESSION":0 -w window-active-style "bg=#043a3a"
-            tmux -L "$SOCK" set-option -t "$SESSION":0 -w window-style        "bg=#043a3a"
+            tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_bg_tint "#000000"
+            tmux -L "$SOCK" set-option -t "$SESSION":0 -w window-active-style "bg=black"
+            tmux -L "$SOCK" set-option -t "$SESSION":0 -w window-style        "bg=black"
             tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_start "$(date +%s)"
             tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_label "⌂"
             tmux -L "$SOCK" send-keys -t "$SESSION":0 "$SCRIPT_DIR/tmax-home" Enter
@@ -207,6 +207,8 @@ EOF
                     [[ "${COLORS[$pi]}" == "$win_color" ]] && bg_tint="${BG_TINTS[$pi]}" && break
                 done
                 [[ -z "$bg_tint" ]] && bg_tint=$(pick_bg_tint "$idx")
+                # Home tab always has a black background
+                [[ "$idx" -eq 0 ]] && bg_tint="#000000"
                 tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w @tmax_bg_tint "$bg_tint" 2>/dev/null || true
                 tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w window-active-style "bg=$bg_tint" 2>/dev/null || true
                 tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w window-style        "bg=$bg_tint" 2>/dev/null || true
