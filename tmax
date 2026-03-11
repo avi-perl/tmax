@@ -102,8 +102,10 @@ Usage: tmax [command]
 
 Commands:
   start            Start or attach to session (default)
-  install, -i      Regenerate config and hot-reload into running session
-  kill, -k         Kill the running session
+  install, -i      Full setup: generate config, apply to running session,
+                   and add tmax to PATH if not already present.
+                   Run once after cloning, and after any config changes.
+  kill, -k         Kill the running session and all tabs
   help, --help     Show this help
 
 EOF

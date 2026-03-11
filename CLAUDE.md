@@ -16,6 +16,10 @@ tmux runs on an isolated socket (`-L tmax`) using session name `tmax`. This prev
 - Colors are assigned round-robin from a 9-color palette by window index
 - The tmux config is **generated** — never edit `~/.config/tmax/tmux.conf` directly; edit `gen_conf()` in `tmax` and run `tmax install`
 
+## Help docs
+
+The `help|--help|-h` case in `tmax` is the canonical reference for users. **Any time a command is added, removed, or its behavior changes, update the help text to match.** Keep descriptions concrete — say what the command actually does, not just what it's called.
+
 ## Making changes
 
 | Change | How to apply |
