@@ -101,19 +101,19 @@ case "${1:-start}" in
 Usage: tmax [command]
 
 Commands:
-  start          Start or attach to session (default)
-  reload         Regenerate config and hot-reload into running session
-  kill, -k       Kill the running session
-  help, --help   Show this help
+  start            Start or attach to session (default)
+  install, -i      Regenerate config and hot-reload into running session
+  kill, -k         Kill the running session
+  help, --help     Show this help
 
 EOF
         ;;
 
-    reload)
+    install|-i)
         gen_conf
         tmux -L "$SOCK" source-file "$CONF" 2>/dev/null \
-            && echo "tmax: config reloaded" \
-            || echo "tmax: no session running (config regenerated)"
+            && echo "tmax: config installed" \
+            || echo "tmax: config generated (no session running)"
         ;;
 
     kill|-k)

@@ -7,6 +7,17 @@ A persistent, named-tab terminal session manager built on tmux. SSH-safe — ses
 - `tmux`
 - `bash`
 
+## Quickstart
+
+```bash
+git clone https://github.com/avi-perl/tmax
+export PATH="$PATH:$(pwd)/tmax"
+tmax install
+tmax
+```
+
+`tmax install` sets up the config. `tmax` starts (or reattaches to) your session.
+
 ## Installation
 
 Clone the repo and add it to your `PATH`:
@@ -22,13 +33,15 @@ Or symlink the launcher:
 ln -s /path/to/tmax/tmax ~/.local/bin/tmax
 ```
 
+Run `tmax install` once after cloning, then `tmax` any time to attach.
+
 ## Usage
 
 ```
-tmax           Start or attach to session
-tmax reload    Regenerate config and hot-reload into running session
-tmax kill      Kill the running session
-tmax --help    Show help
+tmax              Start or attach to session
+tmax install, -i  Set up config (run once after install, or after config changes)
+tmax kill, -k     Kill the running session
+tmax --help       Show help
 ```
 
 ## Keybindings

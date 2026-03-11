@@ -14,18 +14,18 @@ tmux runs on an isolated socket (`-L tmax`) using session name `tmax`. This prev
 - Window 0 is always `home` — it cannot be closed, only detached from
 - Window options `@tmax_color` and `@tmax_start` are set on every window via the `after-new-window` hook calling `tmax assign-color`
 - Colors are assigned round-robin from a 9-color palette by window index
-- The tmux config is **generated** — never edit `~/.config/tmax/tmux.conf` directly; edit `gen_conf()` in `tmax` and run `tmax reload`
+- The tmux config is **generated** — never edit `~/.config/tmax/tmux.conf` directly; edit `gen_conf()` in `tmax` and run `tmax install`
 
 ## Making changes
 
 | Change | How to apply |
 |--------|-------------|
 | Edit `tmax-home` | Auto-applies within ~1s (hot-reload) |
-| Edit keybindings / tmux config in `tmax` | Run `tmax reload` |
+| Edit keybindings / tmux config in `tmax` | Run `tmax install` |
 | Edit session startup logic in `tmax` | Requires `tmax kill && tmax` |
 
 ## tmux vs tmax responsibilities
 
 **tmux provides:** sessions, windows, keybindings, status bar, persistence, mouse, detach/attach
 
-**tmax provides:** CLI (`start`/`kill`/`reload`), config generation, color assignment hook, home tab TUI, window timestamps
+**tmax provides:** CLI (`start`/`install`/`kill`), config generation, color assignment hook, home tab TUI, window timestamps
