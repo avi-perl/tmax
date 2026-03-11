@@ -171,10 +171,8 @@ Usage: tmax [command]
 Commands:
   start               Start or attach to session (default)
   install, -i         Full setup: generate config, apply to running session,
-                      and add tmax to PATH if not already present.
+                      add tmax to PATH, and set up shell integration.
                       Run once after cloning, and after any config changes.
-  shell-integration   Print shell hook snippet to capture command exit codes.
-                      Add to ~/.bashrc or ~/.zshrc:  eval "\$(tmax shell-integration)"
   kill, -k            Kill the running session and all tabs
   help, --help        Show this help
 
@@ -240,22 +238,34 @@ EOF
             done < <(tmux -L "$SOCK" list-windows -t "$SESSION" -F '#{window_index}')
         fi
 
+        case "${SHELL##*/}" in
+            zsh)  rc="$HOME/.zshrc"   ;;
+            bash) rc="$HOME/.bashrc"  ;;
+            *)    rc="$HOME/.profile" ;;
+        esac
+        _rc_changed=0
+
         if printf '%s\n' "${PATH//:/$'\n'}" | grep -qx "$SCRIPT_DIR"; then
             echo "tmax: already on PATH"
         else
-            case "${SHELL##*/}" in
-                zsh)  rc="$HOME/.zshrc"   ;;
-                bash) rc="$HOME/.bashrc"  ;;
-                *)    rc="$HOME/.profile" ;;
-            esac
             if grep -q '# added by tmax' "$rc" 2>/dev/null; then
                 echo "tmax: PATH entry already in $rc"
             else
                 printf '\nexport PATH="$PATH:%s"  # added by tmax\n' "$SCRIPT_DIR" >> "$rc"
                 echo "tmax: added to PATH in $rc"
-                echo "tmax: run 'source $rc' or restart your shell"
+                _rc_changed=1
             fi
         fi
+
+        if grep -q 'tmax shell-integration' "$rc" 2>/dev/null; then
+            echo "tmax: shell integration already in $rc"
+        else
+            printf '\neval "$(tmax shell-integration)"  # added by tmax\n' >> "$rc"
+            echo "tmax: added shell integration to $rc"
+            _rc_changed=1
+        fi
+
+        (( _rc_changed )) && echo "tmax: run 'source $rc' or restart your shell"
         ;;
 
     kill|-k)
