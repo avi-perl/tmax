@@ -37,13 +37,13 @@ draw() {
 
     local windows
     windows=$(tmux -L "$SOCK" list-windows -t "$SESSION" \
-        -F "#{window_index}|#{window_name}|#{@tmax_color}|#{window_active}|#{@tmax_start}" 2>/dev/null) || {
+        -F "#{window_index}|#{window_name}|#{@tmax_color}|#{window_active}|#{@tmax_start}|#{pane_current_command}" 2>/dev/null) || {
         printf "  \033[2m(session not found)\033[0m\033[K\n"
         printf '\033[J'
         return
     }
 
-    while IFS='|' read -r idx name color active start_ts; do
+    while IFS='|' read -r idx name color active start_ts cmd; do
         local ansi runtime=""
         ansi=$(color_ansi "$color")
 
@@ -51,6 +51,13 @@ draw() {
             local elapsed=$(( now - start_ts ))
             runtime=$(printf "%02d:%02d" $(( elapsed / 3600 )) $(( (elapsed % 3600) / 60 )))
         fi
+
+        # Detect if a command is actively running (foreground process is not a shell)
+        local busy=""
+        case "$cmd" in
+            bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home) ;;
+            *) busy="1" ;;
+        esac
 
         printf "  %s●\033[0m " "$ansi"
 
@@ -63,6 +70,7 @@ draw() {
             fi
         fi
 
+        [ -n "$busy" ] && printf " 🔴"
         [ -n "$runtime" ] && printf "  \033[2m%s\033[0m" "$runtime"
 
         printf "\033[K\n"
