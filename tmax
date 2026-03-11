@@ -53,7 +53,7 @@ set -g status-right "#[fg=colour240] %H:%M "
 set -g status-right-length 10
 
 # ── Window tab styling ─────────────────────────────────────────────────────────
-set -g window-status-separator ""
+set -g window-status-separator " "
 set -g status-interval 1
 set -g window-status-format         "#[fg=colour240]#[fg=colour235,bg=#{@tmax_color}] #{@tmax_label} #{?#{==:#{window_index},0},,#[bg=#{@tmax_dark_color}\,fg=#{@tmax_color}] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},,#[fg=colour1]✸ #[fg=#{@tmax_color}]}#{window_name} }#[bg=colour235]"
 set -g window-status-current-format "#[fg=colour240]#[fg=colour235,bg=#{@tmax_color},bold] #{@tmax_label} #{?#{==:#{window_index},0},,#[bg=#{@tmax_dark_color}\,fg=#{@tmax_color}\,bold] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},,#[fg=colour1]✸ #[fg=#{@tmax_color}]}#{window_name} }#[bg=colour235,nobold]"
@@ -94,10 +94,10 @@ case "${1:-start}" in
         color=$(pick_color "$idx")
         dark_color=$(pick_dark_color "$idx")
         label=$(pick_label "$idx")
-        tmux -L "$SOCK" set-option -t "$session" -w @tmax_color "$color" 2>/dev/null || true
-        tmux -L "$SOCK" set-option -t "$session" -w @tmax_dark_color "$dark_color" 2>/dev/null || true
-        tmux -L "$SOCK" set-option -t "$session" -w @tmax_start "$(date +%s)" 2>/dev/null || true
-        tmux -L "$SOCK" set-option -t "$session" -w @tmax_label "$label" 2>/dev/null || true
+        tmux -L "$SOCK" set-option -t "$session:$idx" -w @tmax_color "$color" 2>/dev/null || true
+        tmux -L "$SOCK" set-option -t "$session:$idx" -w @tmax_dark_color "$dark_color" 2>/dev/null || true
+        tmux -L "$SOCK" set-option -t "$session:$idx" -w @tmax_start "$(date +%s)" 2>/dev/null || true
+        tmux -L "$SOCK" set-option -t "$session:$idx" -w @tmax_label "$label" 2>/dev/null || true
         ;;
 
     start|"")
