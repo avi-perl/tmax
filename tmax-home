@@ -32,69 +32,72 @@ _refresh_status &
 _REFRESH_PID=$!
 trap 'kill "$_REFRESH_PID" 2>/dev/null' EXIT
 
+_last_frame=""
+
 draw() {
-    local cols now
-    cols=$(tput cols 2>/dev/null || echo 80)
-    now=$(date +%s)
-    local line
-    line=$(printf '─%.0s' $(seq 1 $((cols - 4))))
+    # Build the entire frame before touching the terminal, then write atomically
+    local frame
+    frame=$(
+        cols=$(tput cols 2>/dev/null || echo 80)
+        now=$(date +%s)
+        line=$(printf '─%.0s' $(seq 1 $((cols - 4))))
 
-    # Go to top-left, hide cursor — no full clear (prevents flash)
-    printf '\033[?25l\033[H'
+        windows=$(tmux -L "$SOCK" list-windows -t "$SESSION" \
+            -F "#{window_index}|#{window_name}|#{@tmax_color}|#{window_active}|#{@tmax_start}|#{pane_current_command}|#{@tmax_label}" 2>/dev/null) || {
+            printf '\033[?25l\033[H'
+            printf "\n\033[K"
+            printf "  \033[2m(session not found)\033[0m\033[K\n"
+            printf '\033[J'
+            exit 0
+        }
 
-    printf "\n\033[K"
-    printf "  \033[1mOpen tabs\033[0m\033[K\n"
-    printf "\033[K\n"
+        buf=''
+        buf+=$'\033[?25l\033[H'
+        buf+=$'\n\033[K'
 
-    local windows
-    windows=$(tmux -L "$SOCK" list-windows -t "$SESSION" \
-        -F "#{window_index}|#{window_name}|#{@tmax_color}|#{window_active}|#{@tmax_start}|#{pane_current_command}|#{@tmax_label}" 2>/dev/null) || {
-        printf "  \033[2m(session not found)\033[0m\033[K\n"
-        printf '\033[J'
-        return
-    }
+        while IFS='|' read -r idx name color active start_ts cmd label; do
+            ansi=$(color_ansi "$color")
+            runtime=""
 
-    while IFS='|' read -r idx name color active start_ts cmd label; do
-        local ansi runtime=""
-        ansi=$(color_ansi "$color")
-
-        if [[ "$start_ts" =~ ^[0-9]+$ ]]; then
-            local elapsed=$(( now - start_ts ))
-            runtime=$(printf "%02d:%02d" $(( elapsed / 3600 )) $(( (elapsed % 3600) / 60 )))
-        fi
-
-        # Detect if a command is actively running (foreground process is not a shell)
-        local busy=""
-        case "$cmd" in
-            bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home) ;;
-            *) busy="1" ;;
-        esac
-
-        printf "  %s●\033[0m " "$ansi"
-        [ -n "$busy" ] && printf "🔴 "
-
-        if [ "$active" = "1" ]; then
-            printf "\033[1m%s: %s\033[0m  \033[2m← you are here\033[0m" "$label" "$name"
-        else
-            printf "%s: %s" "$label" "$name"
-            if [ "$idx" != "0" ]; then
-                printf "  \033[2mAlt+%s\033[0m" "$label"
+            if [[ "$start_ts" =~ ^[0-9]+$ ]]; then
+                elapsed=$(( now - start_ts ))
+                runtime=$(printf "%02d:%02d" $(( elapsed / 3600 )) $(( (elapsed % 3600) / 60 )))
             fi
-        fi
 
-        [ -n "$runtime" ] && printf "  \033[2m%s\033[0m" "$runtime"
+            busy=""
+            case "$cmd" in
+                bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home) ;;
+                *) busy="1" ;;
+            esac
 
-        printf "\033[K\n"
-    done <<< "$windows"
+            row="  ${ansi}●"$'\033[0m'" "
+            [ -n "$busy" ] && row+=$'\033[31m✸\033[0m '"  "
 
-    printf "\033[K\n"
-    printf "  \033[2m%s\033[0m\033[K\n" "$line"
-    printf "\033[K\n"
-    printf "  \033[2mAlt+n\033[0m  new    \033[2mAlt+r\033[0m  rename    \033[2mAlt+x\033[0m  close    \033[2mAlt+a-z\033[0m  jump    \033[2ma-z\033[0m  close tab    \033[2mq\033[0m  exit to shell\033[K\n"
-    printf "\033[K\n"
+            if [ "$active" = "1" ]; then
+                row+=$'\033[1m'"${label}: ${name}"$'\033[0m  \033[2m← you are here\033[0m'
+            else
+                row+="${label}: ${name}"
+                [ "$idx" != "0" ] && row+=$'  \033[2m'"Alt+${label}"$'\033[0m'
+            fi
 
-    # Clear any leftover lines from a previous longer render
-    printf '\033[J'
+            [ -n "$runtime" ] && row+=$'  \033[2m'"${runtime}"$'\033[0m'
+            row+=$'\033[K\n'
+            buf+="$row"
+        done <<< "$windows"
+
+        buf+=$'\033[K\n'
+        buf+="  "$'\033[2m'"${line}"$'\033[0m\033[K\n'
+        buf+=$'\033[K\n'
+        buf+=$'  \033[2mAlt+n\033[0m  new    \033[2mAlt+r\033[0m  rename    \033[2mAlt+x\033[0m  close    \033[2mAlt+a-z\033[0m  jump    \033[2ma-z\033[0m  close tab    \033[2mq\033[0m  exit to shell\033[K\n'
+        buf+=$'\033[K\n'
+        printf '%s' "$buf"
+        printf '\033[J'
+    )
+
+    # Only write to terminal if frame changed
+    [[ "$frame" == "$_last_frame" ]] && return
+    _last_frame="$frame"
+    printf '%s' "$frame"
 }
 
 close_tab() {

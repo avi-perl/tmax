@@ -11,12 +11,18 @@ CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/tmax"
 CONF="$CONF_DIR/tmux.conf"
 
 COLORS=(colour1 colour2 colour3 colour4 colour5 colour6 colour208 colour82 colour165)
+DARK_COLORS=(colour88 colour22 colour58 colour18 colour53 colour23 colour130 colour64 colour89)
 # Labels: h=home(0), then a-g(1-7), i-z(8-25) — 'h' skipped as it's reserved for home
-LABELS=(h a b c d e f g i j k l m n o p q r s t u v w x y z)
+LABELS=(⌂ a b c d e f g i j k l m n o p q r s t u v w x y z)
 
 pick_color() {
     local idx="$1"
     echo "${COLORS[$((idx % ${#COLORS[@]}))]}"
+}
+
+pick_dark_color() {
+    local idx="$1"
+    echo "${DARK_COLORS[$((idx % ${#DARK_COLORS[@]}))]}"
 }
 
 pick_label() {
@@ -41,7 +47,7 @@ set -g allow-rename off
 set -g status on
 set -g status-position top
 set -g status-style "bg=colour235,fg=colour250"
-set -g status-left "#[fg=colour6,bold] ◈ tmax #[fg=colour240]│ "
+set -g status-left "#[fg=colour6,bold] ◈ tmax #[fg=colour240] "
 set -g status-left-length 20
 set -g status-right "#[fg=colour240] %H:%M "
 set -g status-right-length 10
@@ -49,8 +55,8 @@ set -g status-right-length 10
 # ── Window tab styling ─────────────────────────────────────────────────────────
 set -g window-status-separator ""
 set -g status-interval 1
-set -g window-status-format         "#[fg=colour240]│#[fg=#{@tmax_color}] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$,#{pane_current_command}},,🔴 }#{@tmax_label}:#{window_name} "
-set -g window-status-current-format "#[fg=colour240]│#[fg=colour235,bg=#{@tmax_color},bold] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$,#{pane_current_command}},,🔴 }#{@tmax_label}:#{window_name} #[fg=#{@tmax_color},bg=colour235,nobold]"
+set -g window-status-format         "#[fg=colour240]#[fg=colour235,bg=#{@tmax_color}] #{@tmax_label} #{?#{==:#{window_index},0},,#[bg=#{@tmax_dark_color}\,fg=#{@tmax_color}] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},,#[fg=colour1]✸ #[fg=#{@tmax_color}]}#{window_name} }#[bg=colour235]"
+set -g window-status-current-format "#[fg=colour240]#[fg=colour235,bg=#{@tmax_color},bold] #{@tmax_label} #{?#{==:#{window_index},0},,#[bg=#{@tmax_dark_color}\,fg=#{@tmax_color}\,bold] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},,#[fg=colour1]✸ #[fg=#{@tmax_color}]}#{window_name} }#[bg=colour235,nobold]"
 
 # ── No prefix — Alt keys only ─────────────────────────────────────────────────
 unbind C-b
@@ -86,8 +92,10 @@ case "${1:-start}" in
         session="${2:?session name required}"
         idx="${3:?window index required}"
         color=$(pick_color "$idx")
+        dark_color=$(pick_dark_color "$idx")
         label=$(pick_label "$idx")
         tmux -L "$SOCK" set-option -t "$session" -w @tmax_color "$color" 2>/dev/null || true
+        tmux -L "$SOCK" set-option -t "$session" -w @tmax_dark_color "$dark_color" 2>/dev/null || true
         tmux -L "$SOCK" set-option -t "$session" -w @tmax_start "$(date +%s)" 2>/dev/null || true
         tmux -L "$SOCK" set-option -t "$session" -w @tmax_label "$label" 2>/dev/null || true
         ;;
@@ -98,8 +106,9 @@ case "${1:-start}" in
         if ! tmux -L "$SOCK" has-session -t "$SESSION" 2>/dev/null; then
             tmux -L "$SOCK" -f "$CONF" new-session -d -s "$SESSION" -n "home"
             tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_color "colour6"
+            tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_dark_color "colour23"
             tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_start "$(date +%s)"
-            tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_label "h"
+            tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_label "⌂"
             tmux -L "$SOCK" send-keys -t "$SESSION":0 "$SCRIPT_DIR/tmax-home" Enter
         fi
 
@@ -126,6 +135,20 @@ EOF
         tmux -L "$SOCK" source-file "$CONF" 2>/dev/null \
             && echo "tmax: config installed" \
             || echo "tmax: config generated (no session running)"
+
+        # Backfill @tmax_dark_color and fix home label on any window that needs it
+        if tmux -L "$SOCK" has-session -t "$SESSION" 2>/dev/null; then
+            while IFS= read -r idx; do
+                existing=$(tmux -L "$SOCK" show-option -t "$SESSION:$idx" -w @tmax_dark_color 2>/dev/null || true)
+                if [[ -z "$existing" ]]; then
+                    dark_color=$(pick_dark_color "$idx")
+                    tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w @tmax_dark_color "$dark_color" 2>/dev/null || true
+                fi
+                if [[ "$idx" -eq 0 ]]; then
+                    tmux -L "$SOCK" set-option -t "$SESSION:0" -w @tmax_label "⌂" 2>/dev/null || true
+                fi
+            done < <(tmux -L "$SOCK" list-windows -t "$SESSION" -F '#{window_index}')
+        fi
 
         if printf '%s\n' "${PATH//:/$'\n'}" | grep -qx "$SCRIPT_DIR"; then
             echo "tmax: already on PATH"

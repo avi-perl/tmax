@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0] - 2026-03-11
+
+### Changed
+- Status bar tabs now render as two-zone pills: colored badge with the letter label, darker body with the tab name
+- Home tab pill shows only the `⌂` icon — no name body
+- Busy indicator replaced: 🔴 emoji → red `✸` character (works in all terminal fonts)
+- Removed `│` pipe separators between tabs in the status bar
+- Removed "Open tabs" heading from the home TUI
+
+### Added
+- `DARK_COLORS` palette — each tab color has a paired darker shade used for the pill body
+- `@tmax_dark_color` window option set alongside `@tmax_color` on every window
+- `tmax install` backfills `@tmax_dark_color` and the `⌂` label on existing windows
+
+### Fixed
+- Home TUI flash reduced: entire frame is now built in a subshell before any terminal output, then written atomically; redraws are skipped entirely when the frame is unchanged
+
 ## [0.2.0] - 2026-03-11
 
 ### Changed
