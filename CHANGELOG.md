@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0] - 2026-03-11
+
+### Added
+- Thin colored strip below the tab bar that always matches the active tab's color, updating on tab switch, new tab, and tab close
+- `sync-current-color` subcommand — queries the session's current window and updates the strip color
+- `session-window-changed` hook drives strip color updates (covers implicit window changes after kill)
+
+### Changed
+- Tab pill colors reversed: letter label now has the darker background, tab name has the primary color background
+- Tab colors are now unique — new windows pick a random unused color from the palette; no two tabs share a color
+- `assign-color` targets `session:index` explicitly so new windows always receive the correct color (fixes race where options were set on the wrong window)
+- Thin space separator between tabs instead of no separator
+
 ## [0.3.0] - 2026-03-11
 
 ### Changed
