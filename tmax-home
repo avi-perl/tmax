@@ -72,21 +72,25 @@ draw() {
     now=$(date +%s)
 
     windows=$(tmux -L "$SOCK" list-windows -t "$SESSION" \
-        -F "#{window_index}|#{window_name}|#{@tmax_color}|#{window_active}|#{@tmax_start}|#{pane_current_command}|#{@tmax_label}|#{@tmax_bg_tint}" \
+        -F "#{window_index}|#{window_name}|#{@tmax_color}|#{window_active}|#{@tmax_start}|#{pane_current_command}|#{@tmax_label}|#{@tmax_bg_tint}|#{@tmax_indicator}" \
         2>/dev/null) || windows=""
 
     # Pre-pass: detect busy→idle transitions on non-active windows
     local windows_aug=""
-    while IFS='|' read -r idx name color active start_ts cmd label bg_tint; do
+    while IFS='|' read -r idx name color active start_ts cmd label bg_tint indicator; do
         local done_flag=0
         if [[ "$idx" != "0" ]]; then
             local is_busy=0
             case "$cmd" in bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home) ;; *) is_busy=1 ;; esac
 
             if [[ "$active" == "1" ]]; then
-                # User is on this tab — clear done
+                # User is on this tab — clear done and error indicator
                 if [[ "${_WIN_DONE[$idx]:-0}" == "1" ]]; then
                     tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w @tmax_done "" 2>/dev/null || true
+                fi
+                if [[ -n "$indicator" ]]; then
+                    tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w @tmax_indicator "" 2>/dev/null || true
+                    indicator=""
                 fi
                 _WIN_DONE[$idx]=0
             elif [[ $is_busy -eq 0 && "${_WIN_WAS_BUSY[$idx]:-}" == "1" ]]; then
@@ -97,7 +101,7 @@ draw() {
             _WIN_WAS_BUSY[$idx]=$is_busy
             done_flag="${_WIN_DONE[$idx]:-0}"
         fi
-        windows_aug+="${idx}|${name}|${color}|${active}|${start_ts}|${cmd}|${label}|${bg_tint}|${done_flag}"$'\n'
+        windows_aug+="${idx}|${name}|${color}|${active}|${start_ts}|${cmd}|${label}|${bg_tint}|${done_flag}|${indicator}"$'\n'
     done <<< "$windows"
     [[ -n "$windows_aug" ]] && windows_aug="${windows_aug%$'\n'}"
 
@@ -123,7 +127,7 @@ draw() {
         buf+=$'\n\033[K'
         buf+="  ${D}╭${h_inner}╮${R}"$'\033[K\n'
 
-        while IFS='|' read -r idx name color active start_ts cmd label bg_tint done_flag; do
+        while IFS='|' read -r idx name color active start_ts cmd label bg_tint done_flag indicator; do
             [[ "$idx" == "0" ]] && continue
 
             lbl_bg=$(colour_bg "$color")
@@ -141,6 +145,9 @@ draw() {
             if [[ "$active" == 1 ]]; then
                 status="${D}here${RT}"
                 row_text="${B}"
+            elif [[ -n "$indicator" ]]; then
+                status="${RED}■${RT}   "
+                row_text=""
             elif [[ "$done_flag" == "1" ]]; then
                 status="${GREEN}✓${RT}   "
                 row_text=""
