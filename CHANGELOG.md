@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.0] - 2026-03-11
+
+### Changed
+- Project renamed from `claudmux` to `tmax`
+- `reload` command renamed to `install` (alias `-i`)
+
+### Added
+- `tmax install` adds tmax to `PATH` in the user's shell rc file if not already present
+- `tmax install` now serves as the canonical setup command (config + PATH + hot-reload)
+- Quickstart section in README
+
+### Fixed
+- `Alt+x` on home tab now detaches instead of showing a warning
+- Removed flashing on home tab refresh (cursor repositioning instead of screen clear)
+- Home tab no longer shows header/subtitle, just the tab list
+
 ## [0.1.0] - 2026-03-11
 
 Initial release.
