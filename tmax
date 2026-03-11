@@ -58,7 +58,7 @@ set -g allow-rename off
 # ── Status bar (always visible at top) ────────────────────────────────────────
 set -g status 2
 set -g status-position top
-set -g status-style "bg=colour235,fg=colour250"
+set -g status-style "bg=colour232,fg=colour250"
 set -g status-left "#[fg=colour6,bold] ◈ tmax #[fg=colour240] "
 set -g status-left-length 20
 set -g status-right "#[fg=colour240] %H:%M "
@@ -66,15 +66,15 @@ set -g status-right-length 10
 
 # ── Colored context border (thin strip below tab bar, matches current tab) ─────
 # #{@tmax_color} is evaluated live from the current window at render time — no hook needed
-set -g status-format[1] "#[fg=#{@tmax_color},bg=default]$THIN_STRIP"
+set -g status-format[1] "#[fg=#{@tmax_color},bg=#{@tmax_bg_tint}]$THIN_STRIP"
 set -g pane-active-border-style "fg=#{@tmax_color}"
 set -g pane-border-style "fg=colour238"
 
 # ── Window tab styling ─────────────────────────────────────────────────────────
 set -g window-status-separator " "
 set -g status-interval 1
-set -g window-status-format         "#[fg=colour236]#[fg=#{@tmax_color},bg=colour233] #{@tmax_label} #{?#{==:#{window_index},0},,#[fg=colour244\,bg=colour233] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},,#[fg=colour1]✸ #[fg=colour244]}#{window_name} }#[bg=colour235]"
-set -g window-status-current-format "#[fg=colour240]#[fg=#{@tmax_color},bg=#{@tmax_dark_color},bold] #{@tmax_label} #{?#{==:#{window_index},0},,#[bg=#{@tmax_color}\,fg=colour235\,bold] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},,#[fg=colour1]✸ #[fg=colour235]}#{window_name} }#[bg=colour235,nobold]"
+set -g window-status-format         "#[fg=colour234]#[fg=#{@tmax_color},bg=colour235] #{@tmax_label} #{?#{==:#{window_index},0},,#[fg=colour244\,bg=colour235] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},,#[fg=colour1]✸ #[fg=colour244]}#{window_name} }#[bg=colour232]"
+set -g window-status-current-format "#[fg=colour240]#[fg=#{@tmax_color},bg=#{@tmax_dark_color},bold] #{@tmax_label} #{?#{==:#{window_index},0},,#[bg=#{@tmax_color}\,fg=colour235\,bold] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},,#[fg=colour1]✸ #[fg=colour235]}#{window_name} }#[bg=colour232,nobold]"
 
 # ── No prefix — Alt keys only ─────────────────────────────────────────────────
 unbind C-b
