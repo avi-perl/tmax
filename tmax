@@ -72,8 +72,8 @@ set -g pane-border-style "fg=colour238"
 # ── Window tab styling ─────────────────────────────────────────────────────────
 set -g window-status-separator " "
 set -g status-interval 1
-set -g window-status-format         "#[fg=colour234]#[fg=#{@tmax_color},bg=colour235] #{@tmax_label} #{?#{==:#{window_index},0},,#[fg=colour244\,bg=colour235] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},#{?#{@tmax_indicator},#[fg=colour1]■ #[fg=colour244],},#[fg=colour2]▶︎ #[fg=colour244]}#{window_name} }#[bg=colour232]"
-set -g window-status-current-format "#[fg=colour240]#[fg=#{@tmax_color},bg=#{@tmax_dark_color},bold] #{@tmax_label} #{?#{==:#{window_index},0},,#[bg=#{@tmax_color}\,fg=colour235\,bold] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},#{?#{@tmax_indicator},#[fg=colour1]■ #[fg=colour235],},#[fg=colour2]▶︎ #[fg=colour235]}#{window_name} }#[bg=colour232,nobold]"
+set -g window-status-format         "#[fg=colour234]#[fg=#{@tmax_color},bg=colour235] #{@tmax_label} #{?#{==:#{window_index},0},,#[fg=colour244\,bg=colour235] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},,#[fg=colour2]▶︎ #[fg=colour244]}#{window_name} }#[bg=colour232]"
+set -g window-status-current-format "#[fg=colour240]#[fg=#{@tmax_color},bg=#{@tmax_dark_color},bold] #{@tmax_label} #{?#{==:#{window_index},0},,#[bg=#{@tmax_color}\,fg=colour235\,bold] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},,#[fg=colour2]▶︎ #[fg=colour235]}#{window_name} }#[bg=colour232,nobold]"
 
 # ── No prefix — Alt keys only ─────────────────────────────────────────────────
 unbind C-b
@@ -171,7 +171,7 @@ Usage: tmax [command]
 Commands:
   start               Start or attach to session (default)
   install, -i         Full setup: generate config, apply to running session,
-                      add tmax to PATH, and set up shell integration.
+                      and add tmax to PATH if not already present.
                       Run once after cloning, and after any config changes.
   kill, -k            Kill the running session and all tabs
   help, --help        Show this help
@@ -183,28 +183,6 @@ Keybindings (no prefix required):
   Alt+r            Rename current tab
   Alt+x            Close tab (or detach if on home)
 
-EOF
-        ;;
-
-    shell-integration)
-        cat <<'EOF'
-# tmax shell integration — captures command exit codes and shows ■ on failure
-# Add to ~/.bashrc or ~/.zshrc:  eval "$(tmax shell-integration)"
-_tmax_report_exit() {
-    local rc=$?
-    [[ -n "$TMUX" ]] || return
-    if [[ $rc -eq 0 ]]; then
-        tmux set-option -w @tmax_indicator "" 2>/dev/null || true
-    else
-        tmux set-option -w @tmax_indicator "fail" 2>/dev/null || true
-    fi
-}
-if [[ -n "$BASH_VERSION" ]]; then
-    PROMPT_COMMAND="_tmax_report_exit${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
-fi
-if [[ -n "$ZSH_VERSION" ]]; then
-    precmd_functions=(_tmax_report_exit "${precmd_functions[@]}")
-fi
 EOF
         ;;
 
@@ -238,34 +216,22 @@ EOF
             done < <(tmux -L "$SOCK" list-windows -t "$SESSION" -F '#{window_index}')
         fi
 
-        case "${SHELL##*/}" in
-            zsh)  rc="$HOME/.zshrc"   ;;
-            bash) rc="$HOME/.bashrc"  ;;
-            *)    rc="$HOME/.profile" ;;
-        esac
-        _rc_changed=0
-
         if printf '%s\n' "${PATH//:/$'\n'}" | grep -qx "$SCRIPT_DIR"; then
             echo "tmax: already on PATH"
         else
+            case "${SHELL##*/}" in
+                zsh)  rc="$HOME/.zshrc"   ;;
+                bash) rc="$HOME/.bashrc"  ;;
+                *)    rc="$HOME/.profile" ;;
+            esac
             if grep -q '# added by tmax' "$rc" 2>/dev/null; then
                 echo "tmax: PATH entry already in $rc"
             else
                 printf '\nexport PATH="$PATH:%s"  # added by tmax\n' "$SCRIPT_DIR" >> "$rc"
                 echo "tmax: added to PATH in $rc"
-                _rc_changed=1
+                echo "tmax: run 'source $rc' or restart your shell"
             fi
         fi
-
-        if grep -q 'tmax shell-integration' "$rc" 2>/dev/null; then
-            echo "tmax: shell integration already in $rc"
-        else
-            printf '\neval "$(tmax shell-integration)"  # added by tmax\n' >> "$rc"
-            echo "tmax: added shell integration to $rc"
-            _rc_changed=1
-        fi
-
-        (( _rc_changed )) && echo "tmax: run 'source $rc' or restart your shell"
         ;;
 
     kill|-k)
