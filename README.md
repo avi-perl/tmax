@@ -1,4 +1,4 @@
-# claudmux
+# tmax
 
 A persistent, named-tab terminal session manager built on tmux. SSH-safe — sessions survive disconnects and reconnect instantly.
 
@@ -12,23 +12,23 @@ A persistent, named-tab terminal session manager built on tmux. SSH-safe — ses
 Clone the repo and add it to your `PATH`:
 
 ```bash
-git clone https://github.com/avi-perl/claudmux
-export PATH="$PATH:/path/to/claudmux"
+git clone https://github.com/avi-perl/tmax
+export PATH="$PATH:/path/to/tmax"
 ```
 
 Or symlink the launcher:
 
 ```bash
-ln -s /path/to/claudmux/claudmux ~/.local/bin/claudmux
+ln -s /path/to/tmax/tmax ~/.local/bin/tmax
 ```
 
 ## Usage
 
 ```
-claudmux           Start or attach to session
-claudmux reload    Regenerate config and hot-reload into running session
-claudmux kill      Kill the running session
-claudmux --help    Show help
+tmax           Start or attach to session
+tmax reload    Regenerate config and hot-reload into running session
+tmax kill      Kill the running session
+tmax --help    Show help
 ```
 
 ## Keybindings
@@ -50,15 +50,15 @@ claudmux --help    Show help
 
 ## How it works
 
-claudmux runs an isolated tmux session on its own socket (`-L claudmux`) so it never conflicts with an existing tmux setup. On first start it generates a tmux config, creates a session with a `home` window, and launches the home TUI.
+tmax runs an isolated tmux session on its own socket (`-L tmax`) so it never conflicts with an existing tmux setup. On first start it generates a tmux config, creates a session with a `home` window, and launches the home TUI.
 
-The home tab (`claudmux-home`) is a bash loop that redraws every second, showing all open tabs with their assigned color and runtime. It hot-reloads automatically when the script file is modified.
+The home tab (`tmax-home`) is a bash loop that redraws every second, showing all open tabs with their assigned color and runtime. It hot-reloads automatically when the script file is modified.
 
-Each tab gets a color assigned from a 9-color round-robin palette. Colors and creation timestamps are stored as tmux window options (`@claudmux_color`, `@claudmux_start`).
+Each tab gets a color assigned from a 9-color round-robin palette. Colors and creation timestamps are stored as tmux window options (`@tmax_color`, `@tmax_start`).
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `claudmux` | Main CLI — session management, config generation |
-| `claudmux-home` | Home tab TUI renderer |
+| `tmax` | Main CLI — session management, config generation |
+| `tmax-home` | Home tab TUI renderer |

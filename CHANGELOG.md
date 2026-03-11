@@ -14,8 +14,8 @@ Initial release.
 - Close tabs from home screen by pressing their number (`1`-`9`) with confirmation
 - `q` / `Alt+x` on home tab detaches and returns to outer shell
 - SSH-safe — sessions survive disconnects
-- `claudmux reload` — regenerates config and hot-reloads into running session
-- `claudmux kill` / `claudmux -k` — kill the running session
-- `claudmux --help` — usage reference
-- `claudmux-home` hot-reloads automatically when the script file is modified
+- `tmax reload` — regenerates config and hot-reloads into running session
+- `tmax kill` / `tmax -k` — kill the running session
+- `tmax --help` — usage reference
+- `tmax-home` hot-reloads automatically when the script file is modified
 - Flash-free TUI redraws using cursor repositioning instead of screen clear

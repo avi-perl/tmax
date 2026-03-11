@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# claudmux-home - home tab display
+# tmax-home - home tab display
 
-SOCK="claudmux"
-SESSION="claudmux"
+SOCK="tmax"
+SESSION="tmax"
 
 color_ansi() {
     case "$1" in
@@ -37,7 +37,7 @@ draw() {
 
     local windows
     windows=$(tmux -L "$SOCK" list-windows -t "$SESSION" \
-        -F "#{window_index}|#{window_name}|#{@claudmux_color}|#{window_active}|#{@claudmux_start}" 2>/dev/null) || {
+        -F "#{window_index}|#{window_name}|#{@tmax_color}|#{window_active}|#{@tmax_start}" 2>/dev/null) || {
         printf "  \033[2m(session not found)\033[0m\033[K\n"
         printf '\033[J'
         return
