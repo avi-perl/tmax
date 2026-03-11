@@ -21,6 +21,17 @@ color_ansi() {
 
 trap '' INT TERM
 
+# Background loop that forces status bar repaints faster than status-interval allows
+_refresh_status() {
+    while true; do
+        tmux -L "$SOCK" refresh-client -S 2>/dev/null || true
+        sleep 0.2
+    done
+}
+_refresh_status &
+_REFRESH_PID=$!
+trap 'kill "$_REFRESH_PID" 2>/dev/null' EXIT
+
 draw() {
     local cols now
     cols=$(tput cols 2>/dev/null || echo 80)
