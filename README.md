@@ -11,12 +11,13 @@ A persistent, named-tab terminal session manager built on tmux. SSH-safe — ses
 
 ```bash
 git clone https://github.com/avi-perl/tmax
-export PATH="$PATH:$(pwd)/tmax"
-tmax install
+cd tmax
+./tmax install
+source ~/.bashrc   # or ~/.zshrc
 tmax
 ```
 
-`tmax install` sets up the config. `tmax` starts (or reattaches to) your session.
+`tmax install` sets up the config and adds `tmax` to your `PATH` if it isn't already. `tmax` starts (or reattaches to) your session.
 
 ## Installation
 

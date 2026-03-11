@@ -114,6 +114,23 @@ EOF
         tmux -L "$SOCK" source-file "$CONF" 2>/dev/null \
             && echo "tmax: config installed" \
             || echo "tmax: config generated (no session running)"
+
+        if printf '%s\n' "${PATH//:/$'\n'}" | grep -qx "$SCRIPT_DIR"; then
+            echo "tmax: already on PATH"
+        else
+            case "${SHELL##*/}" in
+                zsh)  rc="$HOME/.zshrc"   ;;
+                bash) rc="$HOME/.bashrc"  ;;
+                *)    rc="$HOME/.profile" ;;
+            esac
+            if grep -q '# added by tmax' "$rc" 2>/dev/null; then
+                echo "tmax: PATH entry already in $rc"
+            else
+                printf '\nexport PATH="$PATH:%s"  # added by tmax\n' "$SCRIPT_DIR" >> "$rc"
+                echo "tmax: added to PATH in $rc"
+                echo "tmax: run 'source $rc' or restart your shell"
+            fi
+        fi
         ;;
 
     kill|-k)
