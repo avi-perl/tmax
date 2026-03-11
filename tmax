@@ -72,7 +72,7 @@ set -g pane-border-style "fg=colour238"
 # ── Window tab styling ─────────────────────────────────────────────────────────
 set -g window-status-separator " "
 set -g status-interval 1
-set -g window-status-format         "#[fg=colour234]#[fg=#{@tmax_color},bg=colour235] #{@tmax_label} #{?#{==:#{window_index},0},,#[fg=colour244\,bg=colour235] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},,#[fg=colour2]▶︎ #[fg=colour244]}#{window_name} }#[bg=colour232]"
+set -g window-status-format         "#[fg=colour234]#[fg=#{@tmax_color},bg=colour235] #{@tmax_label} #{?#{==:#{window_index},0},,#[fg=colour244\,bg=colour235] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},#{?#{@tmax_done},#[fg=colour2]✓ #[fg=colour244],},#[fg=colour2]▶︎ #[fg=colour244]}#{window_name} }#[bg=colour232]"
 set -g window-status-current-format "#[fg=colour240]#[fg=#{@tmax_color},bg=#{@tmax_dark_color},bold] #{@tmax_label} #{?#{==:#{window_index},0},,#[bg=#{@tmax_color}\,fg=colour235\,bold] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},,#[fg=colour2]▶︎ #[fg=colour235]}#{window_name} }#[bg=colour232,nobold]"
 
 # ── No prefix — Alt keys only ─────────────────────────────────────────────────
@@ -104,6 +104,7 @@ set -g window-style        "bg=#{@tmax_bg_tint}"
 
 # ── Hooks ─────────────────────────────────────────────────────────────────────
 set-hook -g after-new-window 'run-shell "$SCRIPT assign-color #{session_name} #{window_index}"'
+set-hook -g after-select-window 'set-option -w @tmax_done ""'
 TMUXEOF
 }
 

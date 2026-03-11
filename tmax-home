@@ -9,6 +9,7 @@ R=$'\033[0m'           # reset
 D=$'\033[2m'           # dim
 B=$'\033[1m'           # bold
 RED=$'\033[31m'
+GREEN=$'\033[32m'
 TBG=$'\033[48;5;235m'  # table background (inactive tab colour)
 RT="${R}${TBG}"        # reset fg/bold then restore table bg
 
@@ -62,6 +63,8 @@ trap 'disable_mouse; kill "$_REFRESH_PID" 2>/dev/null' EXIT
 _last_frame=""
 _WIN_ORDER=()
 _WIN_ROW_START=3  # pane row (1-indexed) of first window entry
+declare -A _WIN_WAS_BUSY  # idx -> "1" if was busy last draw
+declare -A _WIN_DONE      # idx -> "1" if done and unvisited
 
 draw() {
     local cols now windows box_w name_w h_inner
@@ -72,12 +75,38 @@ draw() {
         -F "#{window_index}|#{window_name}|#{@tmax_color}|#{window_active}|#{@tmax_start}|#{pane_current_command}|#{@tmax_label}|#{@tmax_bg_tint}" \
         2>/dev/null) || windows=""
 
+    # Pre-pass: detect busy→idle transitions on non-active windows
+    local windows_aug=""
+    while IFS='|' read -r idx name color active start_ts cmd label bg_tint; do
+        local done_flag=0
+        if [[ "$idx" != "0" ]]; then
+            local is_busy=0
+            case "$cmd" in bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home) ;; *) is_busy=1 ;; esac
+
+            if [[ "$active" == "1" ]]; then
+                # User is on this tab — clear done
+                if [[ "${_WIN_DONE[$idx]:-0}" == "1" ]]; then
+                    tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w @tmax_done "" 2>/dev/null || true
+                fi
+                _WIN_DONE[$idx]=0
+            elif [[ $is_busy -eq 0 && "${_WIN_WAS_BUSY[$idx]:-}" == "1" ]]; then
+                # Transitioned busy→idle while user was elsewhere
+                tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w @tmax_done "1" 2>/dev/null || true
+                _WIN_DONE[$idx]=1
+            fi
+            _WIN_WAS_BUSY[$idx]=$is_busy
+            done_flag="${_WIN_DONE[$idx]:-0}"
+        fi
+        windows_aug+="${idx}|${name}|${color}|${active}|${start_ts}|${cmd}|${label}|${bg_tint}|${done_flag}"$'\n'
+    done <<< "$windows"
+    [[ -n "$windows_aug" ]] && windows_aug="${windows_aug%$'\n'}"
+
     _WIN_ORDER=()
-    if [[ -n "$windows" ]]; then
+    if [[ -n "$windows_aug" ]]; then
         while IFS='|' read -r idx _rest; do
             [[ "$idx" == "0" ]] && continue
             _WIN_ORDER+=("$idx")
-        done <<< "$windows"
+        done <<< "$windows_aug"
     fi
 
     box_w=$(( cols - 4 ))
@@ -94,7 +123,7 @@ draw() {
         buf+=$'\n\033[K'
         buf+="  ${D}╭${h_inner}╮${R}"$'\033[K\n'
 
-        while IFS='|' read -r idx name color active start_ts cmd label bg_tint; do
+        while IFS='|' read -r idx name color active start_ts cmd label bg_tint done_flag; do
             [[ "$idx" == "0" ]] && continue
 
             lbl_bg=$(colour_bg "$color")
@@ -112,6 +141,9 @@ draw() {
             if [[ "$active" == 1 ]]; then
                 status="${D}here${RT}"
                 row_text="${B}"
+            elif [[ "$done_flag" == "1" ]]; then
+                status="${GREEN}✓${RT}   "
+                row_text=""
             elif (( is_busy )); then
                 status="${RED}busy${RT}"
                 row_text=""
@@ -131,7 +163,7 @@ draw() {
             printf -v disp_label "%${lpad}s%s%${rpad}s" "" "$label" ""
 
             buf+="  ${D}│${R}${TBG} ${lbl_bg}${B}${disp_label}${RT} ${row_text}${disp_name}${RT}  ${status}  ${D}${runtime}${RT} ${R}${D}│${R}"$'\033[K\n'
-        done <<< "$windows"
+        done <<< "$windows_aug"
 
         buf+="  ${D}╰${h_inner}╯${R}"$'\033[K\n'
         buf+=$'\n\033[K'
