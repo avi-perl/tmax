@@ -41,8 +41,8 @@ set -g status-right-length 10
 
 # ── Window tab styling ─────────────────────────────────────────────────────────
 set -g window-status-separator ""
-set -g window-status-format         "#[fg=colour240]│#[fg=#{@tmax_color}] #{window_index}:#{window_name} "
-set -g window-status-current-format "#[fg=colour240]│#[fg=colour235,bg=#{@tmax_color},bold] #{window_index}:#{window_name} #[fg=#{@tmax_color},bg=colour235,nobold]"
+set -g window-status-format         "#[fg=colour240]│#[fg=#{@tmax_color}] #{window_index}:#{window_name} #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$,#{pane_current_command}},,🔴 }"
+set -g window-status-current-format "#[fg=colour240]│#[fg=colour235,bg=#{@tmax_color},bold] #{window_index}:#{window_name} #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$,#{pane_current_command}},,🔴 }#[fg=#{@tmax_color},bg=colour235,nobold]"
 
 # ── No prefix — Alt keys only ─────────────────────────────────────────────────
 unbind C-b
