@@ -11,10 +11,17 @@ CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/tmax"
 CONF="$CONF_DIR/tmux.conf"
 
 COLORS=(colour1 colour2 colour3 colour4 colour5 colour6 colour208 colour82 colour165)
+# Labels: h=home(0), then a-g(1-7), i-z(8-25) — 'h' skipped as it's reserved for home
+LABELS=(h a b c d e f g i j k l m n o p q r s t u v w x y z)
 
 pick_color() {
     local idx="$1"
     echo "${COLORS[$((idx % ${#COLORS[@]}))]}"
+}
+
+pick_label() {
+    local idx="$1"
+    echo "${LABELS[$idx]:-$idx}"
 }
 
 gen_conf() {
@@ -42,25 +49,24 @@ set -g status-right-length 10
 # ── Window tab styling ─────────────────────────────────────────────────────────
 set -g window-status-separator ""
 set -g status-interval 1
-set -g window-status-format         "#[fg=colour240]│#[fg=#{@tmax_color}] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$,#{pane_current_command}},,🔴 }#{window_index}:#{window_name} "
-set -g window-status-current-format "#[fg=colour240]│#[fg=colour235,bg=#{@tmax_color},bold] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$,#{pane_current_command}},,🔴 }#{window_index}:#{window_name} #[fg=#{@tmax_color},bg=colour235,nobold]"
+set -g window-status-format         "#[fg=colour240]│#[fg=#{@tmax_color}] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$,#{pane_current_command}},,🔴 }#{@tmax_label}:#{window_name} "
+set -g window-status-current-format "#[fg=colour240]│#[fg=colour235,bg=#{@tmax_color},bold] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$,#{pane_current_command}},,🔴 }#{@tmax_label}:#{window_name} #[fg=#{@tmax_color},bg=colour235,nobold]"
 
 # ── No prefix — Alt keys only ─────────────────────────────────────────────────
 unbind C-b
 set -g prefix None
 
-# ── Tab switching: Alt+0..9 ───────────────────────────────────────────────────
-bind-key -n M-0 select-window -t :=0
-bind-key -n M-1 select-window -t :=1
-bind-key -n M-2 select-window -t :=2
-bind-key -n M-3 select-window -t :=3
-bind-key -n M-4 select-window -t :=4
-bind-key -n M-5 select-window -t :=5
-bind-key -n M-6 select-window -t :=6
-bind-key -n M-7 select-window -t :=7
-bind-key -n M-8 select-window -t :=8
-bind-key -n M-9 select-window -t :=9
+# ── Tab switching: Alt+h=home, Alt+a-z=tabs (h skipped) ──────────────────────
 bind-key -n M-h select-window -t :=0
+bind-key -n M-a select-window -t :=1
+bind-key -n M-b select-window -t :=2
+bind-key -n M-c select-window -t :=3
+bind-key -n M-d select-window -t :=4
+bind-key -n M-e select-window -t :=5
+bind-key -n M-f select-window -t :=6
+bind-key -n M-g select-window -t :=7
+bind-key -n M-i select-window -t :=8
+bind-key -n M-j select-window -t :=9
 
 # ── Tab management ────────────────────────────────────────────────────────────
 bind-key -n M-n command-prompt -p "Tab name:" "new-window -n '%%'"
@@ -80,8 +86,10 @@ case "${1:-start}" in
         session="${2:?session name required}"
         idx="${3:?window index required}"
         color=$(pick_color "$idx")
+        label=$(pick_label "$idx")
         tmux -L "$SOCK" set-option -t "$session" -w @tmax_color "$color" 2>/dev/null || true
         tmux -L "$SOCK" set-option -t "$session" -w @tmax_start "$(date +%s)" 2>/dev/null || true
+        tmux -L "$SOCK" set-option -t "$session" -w @tmax_label "$label" 2>/dev/null || true
         ;;
 
     start|"")
@@ -91,6 +99,7 @@ case "${1:-start}" in
             tmux -L "$SOCK" -f "$CONF" new-session -d -s "$SESSION" -n "home"
             tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_color "colour6"
             tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_start "$(date +%s)"
+            tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_label "h"
             tmux -L "$SOCK" send-keys -t "$SESSION":0 "$SCRIPT_DIR/tmax-home" Enter
         fi
 
