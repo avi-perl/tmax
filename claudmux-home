@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# claudmux-home - home tab display
+
+SOCK="claudmux"
+SESSION="claudmux"
+
+color_ansi() {
+    case "$1" in
+        colour1)   printf '\033[31m'       ;;  # red
+        colour2)   printf '\033[32m'       ;;  # green
+        colour3)   printf '\033[33m'       ;;  # yellow
+        colour4)   printf '\033[34m'       ;;  # blue
+        colour5)   printf '\033[35m'       ;;  # magenta
+        colour6)   printf '\033[36m'       ;;  # cyan
+        colour208) printf '\033[38;5;208m' ;;  # orange
+        colour82)  printf '\033[38;5;82m'  ;;  # lime
+        colour165) printf '\033[38;5;165m' ;;  # purple
+        *)         printf '\033[37m'       ;;  # white fallback
+    esac
+}
+
+trap '' INT TERM
+
+draw() {
+    local cols now
+    cols=$(tput cols 2>/dev/null || echo 80)
+    now=$(date +%s)
+    local line
+    line=$(printf '─%.0s' $(seq 1 $((cols - 4))))
+
+    # Go to top-left, hide cursor — no full clear (prevents flash)
+    printf '\033[?25l\033[H'
+
+    printf "\n\033[K"
+    printf "  \033[1mOpen tabs\033[0m\033[K\n"
+    printf "\033[K\n"
+
+    local windows
+    windows=$(tmux -L "$SOCK" list-windows -t "$SESSION" \
+        -F "#{window_index}|#{window_name}|#{@claudmux_color}|#{window_active}|#{@claudmux_start}" 2>/dev/null) || {
+        printf "  \033[2m(session not found)\033[0m\033[K\n"
+        printf '\033[J'
+        return
+    }
+
+    while IFS='|' read -r idx name color active start_ts; do
+        local ansi runtime=""
+        ansi=$(color_ansi "$color")
+
+        if [[ "$start_ts" =~ ^[0-9]+$ ]]; then
+            local elapsed=$(( now - start_ts ))
+            runtime=$(printf "%02d:%02d" $(( elapsed / 3600 )) $(( (elapsed % 3600) / 60 )))
+        fi
+
+        printf "  %s●\033[0m " "$ansi"
+
+        if [ "$active" = "1" ]; then
+            printf "\033[1m%s: %s\033[0m  \033[2m← you are here\033[0m" "$idx" "$name"
+        else
+            printf "%s: %s" "$idx" "$name"
+            if [ "$idx" != "0" ]; then
+                printf "  \033[2mAlt+%s\033[0m" "$idx"
+            fi
+        fi
+
+        [ -n "$runtime" ] && printf "  \033[2m%s\033[0m" "$runtime"
+
+        printf "\033[K\n"
+    done <<< "$windows"
+
+    printf "\033[K\n"
+    printf "  \033[2m%s\033[0m\033[K\n" "$line"
+    printf "\033[K\n"
+    printf "  \033[2mAlt+n\033[0m  new    \033[2mAlt+r\033[0m  rename    \033[2mAlt+x\033[0m  close    \033[2mAlt+1-9\033[0m  jump    \033[2m1-9\033[0m  close tab    \033[2mq\033[0m  exit to shell\033[K\n"
+    printf "\033[K\n"
+
+    # Clear any leftover lines from a previous longer render
+    printf '\033[J'
+}
+
+close_tab() {
+    local idx="$1"
+    local name
+    name=$(tmux -L "$SOCK" list-windows -t "$SESSION" \
+        -F "#{window_index}|#{window_name}" 2>/dev/null \
+        | awk -F'|' -v i="$idx" '$1==i{print $2}')
+    [ -z "$name" ] && return
+
+    printf '\033[?25h'
+    printf '  Close tab %s "%s"? [y/N] ' "$idx" "$name"
+    local confirm
+    read -r -n 1 confirm 2>/dev/null
+    printf '\n\033[?25l'
+
+    if [[ "$confirm" =~ ^[yY]$ ]]; then
+        tmux -L "$SOCK" kill-window -t "$SESSION:$idx" 2>/dev/null || true
+    fi
+}
+
+# One-time full clear before entering the no-flash loop
+tput clear 2>/dev/null || printf '\033[2J\033[H'
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+SELF_MTIME=$(stat -c %Y "$SELF" 2>/dev/null)
+
+while true; do
+    draw
+    if read -r -s -n 1 -t 1 key 2>/dev/null; then
+        case "$key" in
+            q|Q) printf '\033[?25h'; tmux -L "$SOCK" detach-client ;;
+            [1-9]) close_tab "$key" ;;
+        esac
+    fi
+    # Hot-reload: re-exec if script was modified
+    new_mtime=$(stat -c %Y "$SELF" 2>/dev/null)
+    if [[ "$new_mtime" != "$SELF_MTIME" ]]; then
+        exec "$SELF"
+    fi
+done
