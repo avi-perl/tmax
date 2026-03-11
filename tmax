@@ -140,6 +140,8 @@ case "${1:-start}" in
         tmux -L "$SOCK" set-option -t "$session:$idx" -w @tmax_color "$color" 2>/dev/null || true
         tmux -L "$SOCK" set-option -t "$session:$idx" -w @tmax_dark_color "$dark_color" 2>/dev/null || true
         tmux -L "$SOCK" set-option -t "$session:$idx" -w @tmax_bg_tint "$bg_tint" 2>/dev/null || true
+        tmux -L "$SOCK" set-option -t "$session:$idx" -w window-active-style "bg=$bg_tint" 2>/dev/null || true
+        tmux -L "$SOCK" set-option -t "$session:$idx" -w window-style        "bg=$bg_tint" 2>/dev/null || true
         tmux -L "$SOCK" set-option -t "$session:$idx" -w @tmax_start "$(date +%s)" 2>/dev/null || true
         tmux -L "$SOCK" set-option -t "$session:$idx" -w @tmax_label "$label" 2>/dev/null || true
         ;;
@@ -152,6 +154,8 @@ case "${1:-start}" in
             tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_color "colour6"
             tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_dark_color "colour23"
             tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_bg_tint "#043a3a"
+            tmux -L "$SOCK" set-option -t "$SESSION":0 -w window-active-style "bg=#043a3a"
+            tmux -L "$SOCK" set-option -t "$SESSION":0 -w window-style        "bg=#043a3a"
             tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_start "$(date +%s)"
             tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_label "⌂"
             tmux -L "$SOCK" send-keys -t "$SESSION":0 "$SCRIPT_DIR/tmax-home" Enter
@@ -204,9 +208,8 @@ EOF
                 done
                 [[ -z "$bg_tint" ]] && bg_tint=$(pick_bg_tint "$idx")
                 tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w @tmax_bg_tint "$bg_tint" 2>/dev/null || true
-                # Clear any old per-window style overrides so global format-string style applies
-                tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w -u window-style        2>/dev/null || true
-                tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w -u window-active-style 2>/dev/null || true
+                tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w window-active-style "bg=$bg_tint" 2>/dev/null || true
+                tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w window-style        "bg=$bg_tint" 2>/dev/null || true
                 [[ "$idx" -eq 0 ]] && tmux -L "$SOCK" set-option -t "$SESSION:0" -w @tmax_label "⌂" 2>/dev/null || true
             done < <(tmux -L "$SOCK" list-windows -t "$SESSION" -F '#{window_index}')
         fi
