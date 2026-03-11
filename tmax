@@ -14,8 +14,7 @@ COLORS=(colour1 colour2 colour3 colour4 colour5 colour6 colour208 colour82 colou
 DARK_COLORS=(colour88 colour22 colour58 colour18 colour53 colour23 colour130 colour64 colour89)
 # Nearly-black backgrounds with a subtle tint matching each palette color
 BG_TINTS=("#3a0404" "#043a04" "#3a3a04" "#04043a" "#3a043a" "#043a3a" "#3a1e04" "#103a04" "#3a042e")
-# Labels: h=home(0), then a-g(1-7), i-z(8-25) — 'h' skipped as it's reserved for home
-LABELS=(⌂ a b c d e f g i j k l m n o p q r s t u v w x y z)
+LABELS=(⌂ 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25)
 
 pick_color() {
     local idx="$1"
@@ -80,17 +79,17 @@ set -g window-status-current-format "#[fg=colour240]#[fg=#{@tmax_color},bg=#{@tm
 unbind C-b
 set -g prefix None
 
-# ── Tab switching: Alt+h=home, Alt+a-z=tabs (h skipped) ──────────────────────
+# ── Tab switching: Alt+h=home, Alt+1-9=tabs ──────────────────────────────────
 bind-key -n M-h select-window -t :=0
-bind-key -n M-a select-window -t :=1
-bind-key -n M-b select-window -t :=2
-bind-key -n M-c select-window -t :=3
-bind-key -n M-d select-window -t :=4
-bind-key -n M-e select-window -t :=5
-bind-key -n M-f select-window -t :=6
-bind-key -n M-g select-window -t :=7
-bind-key -n M-i select-window -t :=8
-bind-key -n M-j select-window -t :=9
+bind-key -n M-1 select-window -t :=1
+bind-key -n M-2 select-window -t :=2
+bind-key -n M-3 select-window -t :=3
+bind-key -n M-4 select-window -t :=4
+bind-key -n M-5 select-window -t :=5
+bind-key -n M-6 select-window -t :=6
+bind-key -n M-7 select-window -t :=7
+bind-key -n M-8 select-window -t :=8
+bind-key -n M-9 select-window -t :=9
 
 # ── Tab management ────────────────────────────────────────────────────────────
 bind-key -n M-n command-prompt -p "Tab name:" "new-window -n '%%'"
@@ -172,6 +171,13 @@ Commands:
                    Run once after cloning, and after any config changes.
   kill, -k         Kill the running session and all tabs
   help, --help     Show this help
+
+Keybindings (no prefix required):
+  Alt+h            Go to home tab
+  Alt+1-9          Jump to tab by number
+  Alt+n            New tab (prompts for name)
+  Alt+r            Rename current tab
+  Alt+x            Close tab (or detach if on home)
 
 EOF
         ;;
