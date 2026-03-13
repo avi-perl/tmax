@@ -77,9 +77,11 @@ draw() {
     _BOX_W=$box_w
 
     local inner_w=$(( box_w - 2 ))
-    local label_w=$(( box_w - 11 ))   # space for label: │  k  <label>  │ = 2+1+2+1+2+label+2+1 = 11+label
+    # visible chars per row: 2(indent) + 1(│) + 2 + 1(key) + 2 + label_w + 2 + 1(│) = 11 + label_w = box_w
+    local label_w=$(( box_w - 11 ))
     local h_inner; h_inner=$(printf '─%.0s' $(seq 1 $inner_w))
 
+    # titled_border: outputs border filler (no newline) — safe to use with $()
     titled_border() {
         local title=" $1 "
         local fill_len=$(( box_w - 2 - 1 - ${#title} ))
@@ -88,11 +90,12 @@ draw() {
         printf '─%s%s' "$title" "$fill"
     }
 
-    # menu_item key label  — prints one actionable row
+    # menu_item: outputs one row WITHOUT trailing newline — caller appends $'\033[K\n'
+    # (avoids command-substitution stripping of trailing newline)
     menu_item() {
         local key="$1" label="$2"
-        printf -v label "%-${label_w}s" "$label"
-        printf "  ${D}│${R}${TBG}  ${B}${CYAN}%s${R}${TBG}  %s  ${D}│${R}\033[K\n" "$key" "$label"
+        local padded; printf -v padded "%-${label_w}s" "$label"
+        printf "  ${D}│${R}${TBG}  ${B}${CYAN}%s${R}${TBG}  %s  ${D}│${R}" "$key" "$padded"
     }
 
     local BKSL=$'\\'
@@ -115,11 +118,11 @@ draw() {
         # Row 3: Split section top border
         buf+="  ${D}╭$(titled_border "Split")╮${R}"$'\033[K\n'
 
-        # Rows 4-7: split actions
-        buf+="$(menu_item "$BKSL" "Split right")"
-        buf+="$(menu_item "-"     "Split down")"
-        buf+="$(menu_item "z"     "Zoom / unzoom")"
-        buf+="$(menu_item "x"     "Close pane")"
+        # Rows 4–7: split actions (append $'\033[K\n' explicitly — $() strips trailing newlines)
+        buf+="$(menu_item "$BKSL" "Split right")"$'\033[K\n'
+        buf+="$(menu_item "-"     "Split down")"$'\033[K\n'
+        buf+="$(menu_item "z"     "Zoom / unzoom")"$'\033[K\n'
+        buf+="$(menu_item "x"     "Close pane")"$'\033[K\n'
 
         # Row 8: Split section bottom border
         buf+="  ${D}╰${h_inner}╯${R}"$'\033[K\n'
@@ -127,12 +130,12 @@ draw() {
         # Row 9: Layout section top border
         buf+="  ${D}╭$(titled_border "Layout")╮${R}"$'\033[K\n'
 
-        # Rows 10-14: layout actions
-        buf+="$(menu_item "1" "Even columns")"
-        buf+="$(menu_item "2" "Even rows")"
-        buf+="$(menu_item "3" "Main left")"
-        buf+="$(menu_item "4" "Main top")"
-        buf+="$(menu_item "5" "Tiled")"
+        # Rows 10–14: layout actions
+        buf+="$(menu_item "1" "Even columns")"$'\033[K\n'
+        buf+="$(menu_item "2" "Even rows")"$'\033[K\n'
+        buf+="$(menu_item "3" "Main left")"$'\033[K\n'
+        buf+="$(menu_item "4" "Main top")"$'\033[K\n'
+        buf+="$(menu_item "5" "Tiled")"$'\033[K\n'
 
         # Row 15: Layout section bottom border
         buf+="  ${D}╰${h_inner}╯${R}"$'\033[K\n'
