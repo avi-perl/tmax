@@ -183,6 +183,8 @@ case "${1:-start}" in
 
     help|--help|-h)
         cat <<EOF
+tmax $VERSION — persistent named-tab session manager
+
 Usage: tmax [command]
 
 Commands:
@@ -197,11 +199,17 @@ Commands:
   help, --help        Show this help
 
 Keybindings (no prefix required):
-  Alt+h            Go to home tab
+  Alt+h / click ☰  Open tab menu popup
   Alt+1-9          Jump to tab by number
   Alt+n            New tab (prompts for name)
   Alt+r            Rename current tab
-  Alt+x            Close tab (or detach if on home)
+  Alt+x            Close current tab (confirm)
+
+Tab menu:
+  1-9              Jump to tab by number
+  click tab row    Jump to that tab
+  q / click ✕      Close menu
+  click outside    Close menu
 
 EOF
         ;;

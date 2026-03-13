@@ -4,7 +4,7 @@ A persistent, named-tab terminal session manager built on tmux. SSH-safe — ses
 
 ## Requirements
 
-- `tmux`
+- `tmux` 3.2+
 - `bash`
 
 ## Quickstart
@@ -17,62 +17,62 @@ source ~/.bashrc   # or ~/.zshrc
 tmax
 ```
 
-`tmax install` sets up the config and adds `tmax` to your `PATH` if it isn't already. `tmax` starts (or reattaches to) your session.
-
-## Installation
-
-Clone the repo and add it to your `PATH`:
-
-```bash
-git clone https://github.com/avi-perl/tmax
-export PATH="$PATH:/path/to/tmax"
-```
-
-Or symlink the launcher:
-
-```bash
-ln -s /path/to/tmax/tmax ~/.local/bin/tmax
-```
-
-Run `tmax install` once after cloning, then `tmax` any time to attach.
+`tmax install` generates the config, adds `tmax` to your `PATH`, and sets up shell integration. `tmax` starts (or reattaches to) your session.
 
 ## Usage
 
 ```
 tmax              Start or attach to session
-tmax install, -i  Set up config (run once after install, or after config changes)
-tmax kill, -k     Kill the running session
+tmax install      Set up config (run once after cloning, or after config changes)
+tmax kill         Kill the running session and all tabs
 tmax --help       Show help
 ```
 
-## Keybindings
+## Navigation
+
+### Tab menu
+
+Press `Alt+h` or click `☰` in the status bar to open the tab menu — a popup overlay showing all open tabs with their color, status, and uptime.
+
+| Input | Action |
+|-------|--------|
+| `1`–`9` | Jump to tab by number |
+| click tab row | Jump to that tab |
+| `q` / click `✕` / click outside | Close menu |
+
+### Keybindings (from any tab)
 
 | Key | Action |
 |-----|--------|
-| `Alt+0` / `Alt+h` | Go to home tab |
+| `Alt+h` / click `☰` | Open tab menu |
 | `Alt+1`–`9` | Jump to tab by number |
 | `Alt+n` | New tab (prompts for name) |
 | `Alt+r` | Rename current tab |
-| `Alt+x` | Close current tab (confirm) / exit to shell from home |
+| `Alt+x` | Close current tab (with confirm) |
 
-### Home tab only
+## Tab status indicators
 
-| Key | Action |
-|-----|--------|
-| `1`–`9` | Close tab by number (with confirm) |
-| `q` | Detach and return to outer shell |
+Each tab shows a status indicator in the menu and status bar:
+
+| Indicator | Meaning |
+|-----------|---------|
+| `▶︎` green | Command running |
+| `✓` green | Command finished (unvisited) |
+| `■` red | Command failed (exit code ≠ 0) |
+
+Status indicators require shell integration, which `tmax install` sets up automatically.
 
 ## How it works
 
-tmax runs an isolated tmux session on its own socket (`-L tmax`) so it never conflicts with an existing tmux setup. On first start it generates a tmux config, creates a session with a `home` window, and launches the home TUI.
+tmax runs an isolated tmux session on its own socket (`-L tmax`) so it never conflicts with an existing tmux setup. On first start it generates a config and creates a session with a single shell window.
 
-The home tab (`tmax-home`) is a bash loop that redraws every second, showing all open tabs with their assigned color and runtime. It hot-reloads automatically when the script file is modified.
+Each tab gets a unique color from a 9-color palette. The tab menu (`tmax-home`) is a bash loop that redraws every ~0.2s as a tmux popup — it hot-reloads automatically when the script file is modified.
 
-Each tab gets a color assigned from a 9-color round-robin palette. Colors and creation timestamps are stored as tmux window options (`@tmax_color`, `@tmax_start`).
+Colors and creation timestamps are stored as tmux window options (`@tmax_color`, `@tmax_start`).
 
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `tmax` | Main CLI — session management, config generation |
-| `tmax-home` | Home tab TUI renderer |
+| `tmax-home` | Tab menu TUI (runs as a popup) |

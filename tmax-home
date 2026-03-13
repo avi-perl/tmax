@@ -3,6 +3,7 @@
 
 SOCK="tmax"
 SESSION="tmax"
+POPUP_MODE="${TMAX_POPUP:-0}"
 
 # ANSI codes — globals so they expand correctly inside "..." strings
 R=$'\033[0m'           # reset
@@ -124,7 +125,12 @@ draw() {
     local frame
     frame=$(
         buf=$'\033[?25l\033[H'
-        buf+=$'\n\033[K'
+        if [[ "$POPUP_MODE" == "1" ]]; then
+            printf -v _x_str "%${box_w}s" "✕"
+            buf+="  ${D}${_x_str}${R}"$'\033[K\n'
+        else
+            buf+=$'\n\033[K'
+        fi
         buf+="  ${D}╭${h_inner}╮${R}"$'\033[K\n'
 
         while IFS='|' read -r idx name color active start_ts cmd label bg_tint done_flag indicator; do
@@ -178,12 +184,16 @@ draw() {
         rule=$(printf '─%.0s' $(seq 1 $(( box_w ))))
         buf+="  ${D}${rule}${R}"$'\033[K\n'
         buf+=$'\033[K\n'
-        buf+="  Hold ${B}Alt${R} for shortcuts from any tab."$'\033[K\n'
-        buf+=$'\033[K\n'
-        if (( cols < 58 )); then
-            buf+="  ${D}1-9${R} jump  ${D}·${R}  ${D}q${R} detach  ${D}·${R}  ${D}M-n${R} new"$'\033[K\n'
+        if [[ "$POPUP_MODE" == "1" ]]; then
+            buf+="  ${D}1-9${R} jump  ${D}·${R}  ${D}q${R} close"$'\033[K\n'
         else
-            buf+="  ${D}M-n${R} new  ${D}·${R}  ${D}M-r${R} rename  ${D}·${R}  ${D}M-x${R} close  ${D}·${R}  ${D}1-9${R} jump  ${D}·${R}  ${D}q${R} detach"$'\033[K\n'
+            buf+="  Hold ${B}Alt${R} for shortcuts from any tab."$'\033[K\n'
+            buf+=$'\033[K\n'
+            if (( cols < 58 )); then
+                buf+="  ${D}1-9${R} jump  ${D}·${R}  ${D}q${R} detach  ${D}·${R}  ${D}M-n${R} new"$'\033[K\n'
+            else
+                buf+="  ${D}M-n${R} new  ${D}·${R}  ${D}M-r${R} rename  ${D}·${R}  ${D}M-x${R} close  ${D}·${R}  ${D}1-9${R} jump  ${D}·${R}  ${D}q${R} detach"$'\033[K\n'
+            fi
         fi
 
         printf '%s' "$buf"
@@ -199,6 +209,7 @@ switch_to_tab() {
     local idx="$1"
     [[ "$idx" == "0" ]] && return
     tmux -L "$SOCK" select-window -t "$SESSION:$idx" 2>/dev/null || true
+    [[ "$POPUP_MODE" == "1" ]] && exit 0
 }
 
 handle_mouse() {
@@ -209,7 +220,11 @@ handle_mouse() {
     btn="${BASH_REMATCH[1]}" col="${BASH_REMATCH[2]}" row="${BASH_REMATCH[3]}" final="${BASH_REMATCH[4]}"
     [[ "$final" == "m" || "$btn" != "0" ]] && return
     list_pos=$(( row - _WIN_ROW_START ))
-    (( list_pos >= 0 && list_pos < ${#_WIN_ORDER[@]} )) && switch_to_tab "${_WIN_ORDER[$list_pos]}"
+    if (( list_pos >= 0 && list_pos < ${#_WIN_ORDER[@]} )); then
+        switch_to_tab "${_WIN_ORDER[$list_pos]}"
+    elif [[ "$POPUP_MODE" == "1" ]]; then
+        exit 0
+    fi
 }
 
 tput clear 2>/dev/null || printf '\033[2J\033[H'
@@ -238,7 +253,9 @@ while true; do
             handle_mouse $'\033'"$rest"
         else
             case "$key" in
-                q|Q) printf '\033[?25h'; disable_mouse; tmux -L "$SOCK" detach-client ;;
+                q|Q) printf '\033[?25h'; disable_mouse
+                     if [[ "$POPUP_MODE" == "1" ]]; then exit 0
+                     else tmux -L "$SOCK" detach-client; fi ;;
                 [1-9])
                     target=$(tmux -L "$SOCK" list-windows -t "$SESSION" \
                         -F "#{window_index}|#{@tmax_label}" 2>/dev/null \
