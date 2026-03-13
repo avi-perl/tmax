@@ -2,17 +2,30 @@
 # tmax-home - home tab display
 
 SOCK="tmax"
-SESSION="tmax"
 POPUP_MODE="${TMAX_POPUP:-0}"
+VIEW="${TMAX_VIEW:-windows}"      # "windows" | "sessions"
 
-# ANSI codes — globals so they expand correctly inside "..." strings
+# Resolve the session we belong to.
+# Ask tmux directly when possible (authoritative, works without tmax install).
+# Fall back to TMAX_SESSION env var, then "tmax".
+SESSION=""
+if [[ -n "$TMUX" ]]; then
+    SESSION=$(tmux -L "$SOCK" display-message -p '#{session_name}' 2>/dev/null) || true
+fi
+[[ -z "$SESSION" ]] && SESSION="${TMAX_SESSION:-tmax}"
+
+# ANSI codes
 R=$'\033[0m'           # reset
 D=$'\033[2m'           # dim
 B=$'\033[1m'           # bold
 RED=$'\033[31m'
 GREEN=$'\033[32m'
-TBG=$'\033[48;5;235m'  # table background (inactive tab colour)
-RT="${R}${TBG}"        # reset fg/bold then restore table bg
+TBG=$'\033[48;5;235m'  # window table background
+RT="${R}${TBG}"        # reset then restore window bg
+STBG=$'\033[48;5;22m'  # session table background (dark desaturated green)
+SRT="${R}${STBG}"      # reset then restore session bg
+CBGR=$'\033[48;5;52m'  # confirmation dialog background (dull dark red)
+CRT="${R}${CBGR}"      # reset then restore confirm bg
 
 color_ansi() {
     case "$1" in
@@ -29,22 +42,20 @@ color_ansi() {
     esac
 }
 
-# Bright foreground colour → ANSI background (for label badge)
 colour_bg() {
     case "$1" in
-        colour1)   printf '\033[41m'         ;;
-        colour2)   printf '\033[42m'         ;;
-        colour3)   printf '\033[43m'         ;;
-        colour4)   printf '\033[44m'         ;;
-        colour5)   printf '\033[45m'         ;;
-        colour6)   printf '\033[46m'         ;;
-        colour208) printf '\033[48;5;208m'   ;;
-        colour82)  printf '\033[48;5;82m'    ;;
-        colour165) printf '\033[48;5;165m'   ;;
-        *)         printf '\033[40m'         ;;
+        colour1)   printf '\033[41m'       ;;
+        colour2)   printf '\033[42m'       ;;
+        colour3)   printf '\033[43m'       ;;
+        colour4)   printf '\033[44m'       ;;
+        colour5)   printf '\033[45m'       ;;
+        colour6)   printf '\033[46m'       ;;
+        colour208) printf '\033[48;5;208m' ;;
+        colour82)  printf '\033[48;5;82m'  ;;
+        colour165) printf '\033[48;5;165m' ;;
+        *)         printf '\033[40m'       ;;
     esac
 }
-
 
 enable_mouse()  { printf '\033[?1000h\033[?1006h'; }
 disable_mouse() { printf '\033[?1000l\033[?1006l'; }
@@ -62,147 +73,272 @@ _REFRESH_PID=$!
 trap 'disable_mouse; kill "$_REFRESH_PID" 2>/dev/null' EXIT
 
 _last_frame=""
-_WIN_ORDER=()
-_WIN_ROW_START=3  # pane row (1-indexed) of first window entry
-declare -A _WIN_WAS_BUSY  # idx -> "1" if was busy last draw
-declare -A _WIN_DONE      # idx -> "1" if done and unvisited
+_WIN_ORDER=()     # window indices for click detection
+_SESS_ORDER=()    # session names for click detection
+_ROW_START=4      # first clickable data row (constant: ✕, header, border = 3 rows)
+declare -A _WIN_WAS_BUSY  # "sess:idx" -> "1" if busy last draw
+declare -A _WIN_DONE      # "sess:idx" -> "1" if done and unvisited
+_BOX_W=0          # box width from last draw()
+_X_COL=0          # column of per-row ✕ close buttons
+CONFIRM_ACTION="" # "" | "window:idx" | "session:sname"
+_CONFIRM_Y_ROW=6  # row of y/n confirm buttons (constant)
 
 draw() {
-    local cols now windows box_w name_w h_inner
+    local cols now box_w name_w
     cols=$(tput cols 2>/dev/null || echo 80)
     now=$(date +%s)
 
-    windows=$(tmux -L "$SOCK" list-windows -t "$SESSION" \
-        -F "#{window_index}|#{window_name}|#{@tmax_color}|#{window_active}|#{@tmax_start}|#{pane_current_command}|#{@tmax_label}|#{@tmax_bg_tint}|#{@tmax_indicator}" \
-        2>/dev/null) || windows=""
-
-    # Pre-pass: detect busy→idle transitions on non-active windows
-    local windows_aug=""
-    while IFS='|' read -r idx name color active start_ts cmd label bg_tint indicator; do
-        local done_flag=0
-        if [[ "$idx" != "0" ]]; then
-            local is_busy=0
-            case "$cmd" in bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home) ;; *) is_busy=1 ;; esac
-
-            if [[ "$active" == "1" ]]; then
-                # User is on this tab — clear done and error indicator
-                if [[ "${_WIN_DONE[$idx]:-0}" == "1" ]]; then
-                    tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w @tmax_done "" 2>/dev/null || true
-                fi
-                if [[ -n "$indicator" ]]; then
-                    tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w @tmax_indicator "" 2>/dev/null || true
-                    indicator=""
-                fi
-                _WIN_DONE[$idx]=0
-            elif [[ $is_busy -eq 0 && "${_WIN_WAS_BUSY[$idx]:-}" == "1" ]]; then
-                # Transitioned busy→idle while user was elsewhere
-                tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w @tmax_done "1" 2>/dev/null || true
-                _WIN_DONE[$idx]=1
-            fi
-            _WIN_WAS_BUSY[$idx]=$is_busy
-            done_flag="${_WIN_DONE[$idx]:-0}"
-        fi
-        windows_aug+="${idx}|${name}|${color}|${active}|${start_ts}|${cmd}|${label}|${bg_tint}|${done_flag}|${indicator}"$'\n'
-    done <<< "$windows"
-    [[ -n "$windows_aug" ]] && windows_aug="${windows_aug%$'\n'}"
-
-    _WIN_ORDER=()
-    if [[ -n "$windows_aug" ]]; then
-        while IFS='|' read -r idx _rest; do
-            [[ "$idx" == "0" ]] && continue
-            _WIN_ORDER+=("$idx")
-        done <<< "$windows_aug"
-    fi
-
     box_w=$(( cols - 4 ))
-    (( box_w > 58 )) && box_w=58
-    (( box_w < 30 )) && box_w=30
-    # row: │ sp label(3) sp name(N) sp sp status(4) sp sp uptime(5) sp │ = 21+N
-    name_w=$(( box_w - 21 ))
-    (( name_w < 6 )) && name_w=6
+    (( box_w > 44 )) && box_w=44
+    (( box_w < 28 )) && box_w=28
+    _BOX_W=$box_w
+    _X_COL=4  # ✕ is always at col 4 (leading spaces + left border)
+
+    local h_inner
     h_inner=$(printf '─%.0s' $(seq 1 $(( box_w - 2 ))))
 
-    local frame
-    frame=$(
-        buf=$'\033[?25l\033[H'
-        if [[ "$POPUP_MODE" == "1" ]]; then
-            printf -v _x_str "%${box_w}s" "✕"
-            buf+="  ${D}${_x_str}${R}"$'\033[K\n'
+    # Build titled top border: ╭─ Title ───╮
+    titled_border() {
+        local title=" $1 " fill_len
+        fill_len=$(( box_w - 2 - 1 - ${#title} ))
+        (( fill_len < 1 )) && fill_len=1
+        local fill; fill=$(printf '─%.0s' $(seq 1 $fill_len))
+        printf '─%s%s' "$title" "$fill"
+    }
+
+    # ── Confirmation dialog ──────────────────────────────────────────────────
+    if [[ -n "$CONFIRM_ACTION" ]]; then
+        local target_type target_name
+        if [[ "$CONFIRM_ACTION" == window:* ]]; then
+            local idx="${CONFIRM_ACTION#window:}"
+            target_name=$(tmux -L "$SOCK" display-message -t "$SESSION:$idx" -p '#{window_name}' 2>/dev/null || echo "$idx")
+            target_type="tab"
         else
-            buf+=$'\n\033[K'
+            target_name="${CONFIRM_ACTION#session:}"
+            target_type="session"
         fi
-        buf+="  ${D}╭${h_inner}╮${R}"$'\033[K\n'
-
-        while IFS='|' read -r idx name color active start_ts cmd label bg_tint done_flag indicator; do
-            [[ "$idx" == "0" ]] && continue
-
-            lbl_bg=$(colour_bg "$color")
-
-            if [[ "$start_ts" =~ ^[0-9]+$ ]]; then
-                elapsed=$(( now - start_ts ))
-                printf -v runtime '%02d:%02d' $(( elapsed / 3600 )) $(( (elapsed % 3600) / 60 ))
+        local inner_w=$(( box_w - 4 ))
+        local rpad=$(( box_w - 28 ))
+        (( rpad < 0 )) && rpad=0
+        local rpad_str; printf -v rpad_str "%${rpad}s" ""
+        local frame
+        frame=$(
+            buf=$'\033[?25l\033[2J\033[H'
+            if [[ "$POPUP_MODE" == "1" ]]; then
+                printf -v _x_str "%${box_w}s" "✕"
+                buf+="  ${D}${_x_str}${R}"$'\033[K\n'
             else
-                runtime='--:--'
+                buf+=$'\n\033[K'
             fi
-
-            is_busy=0
-            case "$cmd" in bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home) ;; *) is_busy=1 ;; esac
-
-            if [[ "$active" == 1 ]]; then
-                status="${D}here${RT}"
-                row_text="${B}"
-            elif [[ -n "$indicator" ]]; then
-                status="${RED}■${RT}   "
-                row_text=""
-            elif [[ "$done_flag" == "1" ]]; then
-                status="${GREEN}✓${RT}   "
-                row_text=""
-            elif (( is_busy )); then
-                status="${RED}busy${RT}"
-                row_text=""
-            else
-                status="    "
-                row_text="${D}"
-            fi
-
-            disp_name="$name"
-            (( ${#name} > name_w )) && disp_name="${name:0:$(( name_w - 1 ))}…"
-            printf -v disp_name "%-${name_w}s" "$disp_name"
-
-            # Center label in 3 chars
-            len=${#label}
-            lpad=$(( (3 - len) / 2 ))
-            rpad=$(( 3 - len - lpad ))
-            printf -v disp_label "%${lpad}s%s%${rpad}s" "" "$label" ""
-
-            buf+="  ${D}│${R}${TBG} ${lbl_bg}${B}${disp_label}${RT} ${row_text}${disp_name}${RT}  ${status}  ${D}${runtime}${RT} ${R}${D}│${R}"$'\033[K\n'
-        done <<< "$windows_aug"
-
-        buf+="  ${D}╰${h_inner}╯${R}"$'\033[K\n'
-        buf+=$'\n\033[K'
-
-        rule=$(printf '─%.0s' $(seq 1 $(( box_w ))))
-        buf+="  ${D}${rule}${R}"$'\033[K\n'
-        buf+=$'\033[K\n'
-        if [[ "$POPUP_MODE" == "1" ]]; then
-            buf+="  ${D}1-9${R} jump  ${D}·${R}  ${D}q${R} close"$'\033[K\n'
-        else
-            buf+="  Hold ${B}Alt${R} for shortcuts from any tab."$'\033[K\n'
             buf+=$'\033[K\n'
-            if (( cols < 58 )); then
-                buf+="  ${D}1-9${R} jump  ${D}·${R}  ${D}q${R} detach  ${D}·${R}  ${D}M-n${R} new"$'\033[K\n'
+            buf+="  ${CBGR}${D}╭$(titled_border "Confirm")╮${R}"$'\033[K\n'
+            local msg; printf -v msg "%-${inner_w}s" "Close $target_type \"$target_name\"?"
+            buf+="  ${CBGR}${D}│${CRT} ${B}${msg}${CRT} ${D}│${R}"$'\033[K\n'
+            local blank; printf -v blank "%$(( box_w - 2 ))s" ""
+            buf+="  ${CBGR}${D}│${CBGR}${blank}${D}│${R}"$'\033[K\n'
+            buf+="  ${CBGR}${D}│${CRT} ${B}[y]${R}${CBGR} Yes, close${rpad_str}${D}[n]${R}${CBGR} Cancel ${D}│${R}"$'\033[K\n'
+            buf+="  ${CBGR}${D}╰${h_inner}╯${R}"$'\033[K\n'
+            buf+=$'\033[K\n'
+            buf+="  ${D}y / enter${R} confirm  ${D}·${R}  ${D}n / esc${R} cancel"$'\033[K\n'
+            printf '%s' "$buf"
+            printf '\033[J'
+        )
+        [[ "$frame" == "$_last_frame" ]] && return
+        _last_frame="$frame"
+        printf '%s' "$frame"
+        return
+    fi
+
+    if [[ "$VIEW" == "sessions" ]]; then
+        # ── Sessions view ────────────────────────────────────────────────────
+        local sess_raw
+        sess_raw=$(tmux -L "$SOCK" list-sessions \
+            -F "#{session_name}	#{session_windows}	#{?session_attached,1,0}" \
+            2>/dev/null) || sess_raw=""
+        _SESS_ORDER=()
+        while IFS=$'\t' read -r sname _w _a; do
+            [[ -n "$sname" ]] && _SESS_ORDER+=("$sname")
+        done <<< "$sess_raw"
+
+        local sess_name_w=$(( box_w - 15 ))
+        (( sess_name_w < 4 )) && sess_name_w=4
+
+        local frame
+        frame=$(
+            buf=$'\033[?25l\033[2J\033[H'
+            if [[ "$POPUP_MODE" == "1" ]]; then
+                printf -v _x_str "%${box_w}s" "✕"
+                buf+="  ${D}${_x_str}${R}"$'\033[K\n'
             else
-                buf+="  ${D}M-n${R} new  ${D}·${R}  ${D}M-r${R} rename  ${D}·${R}  ${D}M-x${R} close  ${D}·${R}  ${D}1-9${R} jump  ${D}·${R}  ${D}q${R} detach"$'\033[K\n'
+                buf+=$'\n\033[K'
             fi
+
+            # ── Header row: click to go back to windows view ──────────────
+            buf+="  ${D}← ${R}${B}${SESSION}${R}"$'\033[K\n'
+
+            # ── Titled border ─────────────────────────────────────────────
+            buf+="  ${D}╭$(titled_border "Sessions")╮${R}"$'\033[K\n'
+
+            # ── Session rows ──────────────────────────────────────────────
+            while IFS=$'\t' read -r sname wins attached; do
+                [[ -z "$sname" ]] && continue
+                local win_str="$wins tab"
+                (( wins != 1 )) && win_str+="s"
+                printf -v win_str "%-7s" "$win_str"
+
+                local disp_sname="$sname"
+                (( ${#sname} > sess_name_w )) && disp_sname="${sname:0:$(( sess_name_w - 1 ))}…"
+                printf -v disp_sname "%-${sess_name_w}s" "$disp_sname"
+
+                if [[ "$sname" == "$SESSION" ]]; then
+                    buf+="  ${D}│${R}${STBG}${RED}✕${R}${STBG} ${B}▸ ${disp_sname}${SRT}  ${D}${win_str}${R}${D}│${R}"$'\033[K\n'
+                else
+                    buf+="  ${D}│${R}${STBG}${RED}✕${R}${STBG}   ${D}${disp_sname}${SRT}  ${D}${win_str}${R}${D}│${R}"$'\033[K\n'
+                fi
+            done <<< "$sess_raw"
+
+            buf+="  ${D}╰${h_inner}╯${R}"$'\033[K\n'
+            buf+=$'\n\033[K'
+            rule=$(printf '─%.0s' $(seq 1 $(( box_w ))))
+            buf+="  ${D}${rule}${R}"$'\033[K\n'
+            buf+=$'\033[K\n'
+            if [[ "$POPUP_MODE" == "1" ]]; then
+                buf+="  ${D}click session${R} to switch  ${D}·${R}  ${D}q${R} close"$'\033[K\n'
+            else
+                buf+="  ${D}click session${R} to switch"$'\033[K\n'
+            fi
+            printf '%s' "$buf"
+            printf '\033[J'
+        )
+        [[ "$frame" == "$_last_frame" ]] && return
+        _last_frame="$frame"
+        printf '%s' "$frame"
+
+    else
+        # ── Windows view ─────────────────────────────────────────────────────
+        # row: │ sp label(3) sp name(N) sp sp status(4) sp sp uptime(5) sp │ = 21+N
+        name_w=$(( box_w - 21 ))
+        (( name_w < 6 )) && name_w=6
+
+        local windows
+        windows=$(tmux -L "$SOCK" list-windows -t "$SESSION" \
+            -F "#{window_index}|#{window_name}|#{@tmax_color}|#{window_active}|#{@tmax_start}|#{pane_current_command}|#{@tmax_label}|#{@tmax_bg_tint}|#{@tmax_indicator}" \
+            2>/dev/null) || windows=""
+
+        # Pre-pass: detect busy→idle transitions
+        local windows_aug=""
+        while IFS='|' read -r idx name color active start_ts cmd label bg_tint indicator; do
+            local done_flag=0
+            local key="${SESSION}:${idx}"
+            if [[ "$idx" != "0" ]]; then
+                local is_busy=0
+                case "$cmd" in bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home) ;; *) is_busy=1 ;; esac
+                if [[ "$active" == "1" ]]; then
+                    if [[ "${_WIN_DONE[$key]:-0}" == "1" ]]; then
+                        tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w @tmax_done "" 2>/dev/null || true
+                    fi
+                    if [[ -n "$indicator" ]]; then
+                        tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w @tmax_indicator "" 2>/dev/null || true
+                        indicator=""
+                    fi
+                    _WIN_DONE[$key]=0
+                elif [[ $is_busy -eq 0 && "${_WIN_WAS_BUSY[$key]:-}" == "1" ]]; then
+                    tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w @tmax_done "1" 2>/dev/null || true
+                    _WIN_DONE[$key]=1
+                fi
+                _WIN_WAS_BUSY[$key]=$is_busy
+                done_flag="${_WIN_DONE[$key]:-0}"
+            fi
+            windows_aug+="${idx}|${name}|${color}|${active}|${start_ts}|${cmd}|${label}|${bg_tint}|${done_flag}|${indicator}"$'\n'
+        done <<< "$windows"
+        [[ -n "$windows_aug" ]] && windows_aug="${windows_aug%$'\n'}"
+
+        _WIN_ORDER=()
+        if [[ -n "$windows_aug" ]]; then
+            while IFS='|' read -r idx _rest; do
+                [[ "$idx" == "0" ]] && continue
+                _WIN_ORDER+=("$idx")
+            done <<< "$windows_aug"
         fi
 
-        printf '%s' "$buf"
-        printf '\033[J'
-    )
+        local frame
+        frame=$(
+            buf=$'\033[?25l\033[2J\033[H'
+            if [[ "$POPUP_MODE" == "1" ]]; then
+                printf -v _x_str "%${box_w}s" "✕"
+                buf+="  ${D}${_x_str}${R}"$'\033[K\n'
+            else
+                buf+=$'\n\033[K'
+            fi
 
-    [[ "$frame" == "$_last_frame" ]] && return
-    _last_frame="$frame"
-    printf '%s' "$frame"
+            # ── Header row: prominent session name, click for sessions view ─
+            buf+="  ${B}▸ ${SESSION}${R}"$'\033[K\n'
+
+            # ── Titled border ────────────────────────────────────────────────
+            buf+="  ${D}╭$(titled_border "Windows")╮${R}"$'\033[K\n'
+
+            # ── Window rows ──────────────────────────────────────────────────
+            while IFS='|' read -r idx name color active start_ts cmd label bg_tint done_flag indicator; do
+                [[ "$idx" == "0" ]] && continue
+                lbl_bg=$(colour_bg "$color")
+
+                if [[ "$start_ts" =~ ^[0-9]+$ ]]; then
+                    elapsed=$(( now - start_ts ))
+                    printf -v runtime '%02d:%02d' $(( elapsed / 3600 )) $(( (elapsed % 3600) / 60 ))
+                else
+                    runtime='--:--'
+                fi
+
+                is_busy=0
+                case "$cmd" in bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home) ;; *) is_busy=1 ;; esac
+
+                if [[ "$active" == 1 ]]; then
+                    status="${D}here${RT}"; row_text="${B}"
+                elif [[ -n "$indicator" ]]; then
+                    status="${RED}■${RT}   "; row_text=""
+                elif [[ "$done_flag" == "1" ]]; then
+                    status="${GREEN}✓${RT}   "; row_text=""
+                elif (( is_busy )); then
+                    status="${RED}busy${RT}"; row_text=""
+                else
+                    status="    "; row_text="${D}"
+                fi
+
+                disp_name="$name"
+                (( ${#name} > name_w )) && disp_name="${name:0:$(( name_w - 1 ))}…"
+                printf -v disp_name "%-${name_w}s" "$disp_name"
+
+                len=${#label}
+                lpad=$(( (3 - len) / 2 ))
+                rpad=$(( 3 - len - lpad ))
+                printf -v disp_label "%${lpad}s%s%${rpad}s" "" "$label" ""
+
+                buf+="  ${D}│${R}${TBG}${RED}✕${R}${TBG} ${lbl_bg}${B}${disp_label}${RT} ${row_text}${disp_name}${RT}  ${status}  ${D}${runtime}${R}${D}│${R}"$'\033[K\n'
+            done <<< "$windows_aug"
+
+            buf+="  ${D}╰${h_inner}╯${R}"$'\033[K\n'
+            buf+=$'\n\033[K'
+            rule=$(printf '─%.0s' $(seq 1 $(( box_w ))))
+            buf+="  ${D}${rule}${R}"$'\033[K\n'
+            buf+=$'\033[K\n'
+            if [[ "$POPUP_MODE" == "1" ]]; then
+                buf+="  ${D}1-9${R} jump  ${D}·${R}  ${D}q${R} close"$'\033[K\n'
+            else
+                buf+="  Hold ${B}Alt${R} for shortcuts from any tab."$'\033[K\n'
+                buf+=$'\033[K\n'
+                if (( cols < 50 )); then
+                    buf+="  ${D}1-9${R} jump  ${D}·${R}  ${D}q${R} detach  ${D}·${R}  ${D}M-n${R} new"$'\033[K\n'
+                else
+                    buf+="  ${D}M-n${R} new  ${D}·${R}  ${D}M-r${R} rename  ${D}·${R}  ${D}M-x${R} close  ${D}·${R}  ${D}1-9${R} jump  ${D}·${R}  ${D}q${R} detach"$'\033[K\n'
+                fi
+            fi
+            printf '%s' "$buf"
+            printf '\033[J'
+        )
+        [[ "$frame" == "$_last_frame" ]] && return
+        _last_frame="$frame"
+        printf '%s' "$frame"
+    fi
 }
 
 switch_to_tab() {
@@ -212,6 +348,22 @@ switch_to_tab() {
     [[ "$POPUP_MODE" == "1" ]] && exit 0
 }
 
+do_confirm() {
+    if [[ "$CONFIRM_ACTION" == window:* ]]; then
+        local idx="${CONFIRM_ACTION#window:}"
+        tmux -L "$SOCK" kill-window -t "$SESSION:$idx" 2>/dev/null || true
+    elif [[ "$CONFIRM_ACTION" == session:* ]]; then
+        local sname="${CONFIRM_ACTION#session:}"
+        tmux -L "$SOCK" kill-session -t "$sname" 2>/dev/null || true
+        if [[ "$sname" == "$SESSION" ]]; then
+            [[ "$POPUP_MODE" == "1" ]] && exit 0
+            tmux -L "$SOCK" detach-client 2>/dev/null || true
+        fi
+    fi
+    CONFIRM_ACTION=""
+    _last_frame=""
+}
+
 handle_mouse() {
     local seq="$1" content btn col row final
     [[ "$seq" == $'\033['* ]] || return
@@ -219,11 +371,65 @@ handle_mouse() {
     [[ "$content" =~ ^'<'([0-9]+)';'([0-9]+)';'([0-9]+)([Mm]) ]] || return
     btn="${BASH_REMATCH[1]}" col="${BASH_REMATCH[2]}" row="${BASH_REMATCH[3]}" final="${BASH_REMATCH[4]}"
     [[ "$final" == "m" || "$btn" != "0" ]] && return
-    list_pos=$(( row - _WIN_ROW_START ))
-    if (( list_pos >= 0 && list_pos < ${#_WIN_ORDER[@]} )); then
-        switch_to_tab "${_WIN_ORDER[$list_pos]}"
-    elif [[ "$POPUP_MODE" == "1" ]]; then
+
+    # ── Confirmation dialog clicks ────────────────────────────────────────────
+    if [[ -n "$CONFIRM_ACTION" ]]; then
+        if [[ "$POPUP_MODE" == "1" && "$row" == "1" ]]; then exit 0; fi
+        if [[ "$row" == "$_CONFIRM_Y_ROW" ]]; then
+            local mid=$(( 2 + _BOX_W / 2 ))
+            if (( col <= mid )); then do_confirm
+            else CONFIRM_ACTION=""; _last_frame=""; fi
+        else
+            CONFIRM_ACTION=""; _last_frame=""
+        fi
+        return
+    fi
+
+    # ── ✕ row (popup only) ────────────────────────────────────────────────────
+    if [[ "$POPUP_MODE" == "1" && "$row" == "1" ]]; then
         exit 0
+    fi
+
+    # ── Header row: toggle view ───────────────────────────────────────────────
+    if [[ "$row" == "2" ]]; then
+        if [[ "$VIEW" == "windows" ]]; then
+            VIEW="sessions"
+        else
+            VIEW="windows"
+        fi
+        _last_frame=""
+        return
+    fi
+
+    # ── Data rows ─────────────────────────────────────────────────────────────
+    local list_pos=$(( row - _ROW_START ))
+    if (( list_pos < 0 )); then return; fi
+
+    if [[ "$VIEW" == "sessions" ]]; then
+        if (( list_pos < ${#_SESS_ORDER[@]} )); then
+            if (( col <= _X_COL + 1 )); then
+                CONFIRM_ACTION="session:${_SESS_ORDER[$list_pos]}"
+                _last_frame=""
+                return
+            fi
+            local target_sess="${_SESS_ORDER[$list_pos]}"
+            if [[ "$target_sess" != "$SESSION" ]]; then
+                tmux -L "$SOCK" switch-client -t "$target_sess" 2>/dev/null || true
+                SESSION="$target_sess"
+            fi
+            VIEW="windows"
+            _last_frame=""
+            [[ "$POPUP_MODE" == "1" ]] && exit 0
+        fi
+    else
+        if (( list_pos < ${#_WIN_ORDER[@]} )); then
+            if (( col <= _X_COL + 1 )); then
+                CONFIRM_ACTION="window:${_WIN_ORDER[$list_pos]}"
+                _last_frame=""
+                return
+            fi
+            switch_to_tab "${_WIN_ORDER[$list_pos]}"
+        fi
     fi
 }
 
@@ -250,25 +456,43 @@ while true; do
                     [[ "$c" =~ [A-Za-z] ]] && break
                 done
             fi
-            handle_mouse $'\033'"$rest"
+            if [[ -z "$rest" && -n "$CONFIRM_ACTION" ]]; then
+                CONFIRM_ACTION=""; _last_frame=""
+            elif [[ "$rest" == "m" && "$POPUP_MODE" == "1" ]]; then
+                exit 0
+            else
+                handle_mouse $'\033'"$rest"
+            fi
         else
-            case "$key" in
-                q|Q) printf '\033[?25h'; disable_mouse
-                     if [[ "$POPUP_MODE" == "1" ]]; then exit 0
-                     else tmux -L "$SOCK" detach-client; fi ;;
-                [1-9])
-                    target=$(tmux -L "$SOCK" list-windows -t "$SESSION" \
-                        -F "#{window_index}|#{@tmax_label}" 2>/dev/null \
-                        | awk -F'|' -v k="$key" '$2==k{print $1; exit}')
-                    [[ -n "$target" ]] && switch_to_tab "$target"
-                    ;;
-            esac
+            if [[ -n "$CONFIRM_ACTION" ]]; then
+                case "$key" in
+                    $'\r'|y|Y) do_confirm ;;
+                    *) CONFIRM_ACTION=""; _last_frame="" ;;
+                esac
+            else
+                case "$key" in
+                    q|Q) printf '\033[?25h'; disable_mouse
+                         if [[ "$POPUP_MODE" == "1" ]]; then exit 0
+                         else tmux -L "$SOCK" detach-client; fi ;;
+                    s|S) if [[ "$VIEW" == "windows" ]]; then VIEW="sessions"
+                         else VIEW="windows"; fi
+                         _last_frame="" ;;
+                    [1-9])
+                        if [[ "$VIEW" == "windows" ]]; then
+                            target=$(tmux -L "$SOCK" list-windows -t "$SESSION" \
+                                -F "#{window_index}|#{@tmax_label}" 2>/dev/null \
+                                | awk -F'|' -v k="$key" '$2==k{print $1; exit}')
+                            [[ -n "$target" ]] && switch_to_tab "$target"
+                        fi
+                        ;;
+                esac
+            fi
         fi
     fi
 
     new_mtime=$(stat -c %Y "$SELF" 2>/dev/null)
     if [[ "$new_mtime" != "$SELF_MTIME" ]]; then
         disable_mouse
-        exec "$SELF"
+        exec env TMAX_SESSION="$SESSION" TMAX_POPUP="$POPUP_MODE" TMAX_VIEW="$VIEW" "$SELF"
     fi
 done
