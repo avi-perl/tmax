@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+# tmax-split — pane split / layout menu popup
+
+SOCK="tmax"
+POPUP_MODE="${TMAX_POPUP:-0}"
+TMAX_PANE="${TMAX_PANE:-}"
+
+SESSION=""
+if [[ -n "$TMUX" ]]; then
+    SESSION=$(tmux -L "$SOCK" display-message -p '#{session_name}' 2>/dev/null) || true
+fi
+[[ -z "$SESSION" ]] && SESSION="${TMAX_SESSION:-tmax}"
+
+R=$'\033[0m'
+D=$'\033[2m'
+B=$'\033[1m'
+CYAN=$'\033[36m'
+TBG=$'\033[48;5;234m'
+RT="${R}${TBG}"
+
+enable_mouse()  { printf '\033[?1000h\033[?1006h'; }
+disable_mouse() { printf '\033[?1000l\033[?1006l'; }
+
+trap '' INT TERM
+trap 'disable_mouse' EXIT
+
+_last_frame=""
+_BOX_W=0
+
+# Fixed row → action (matches draw() layout exactly)
+# Row 1:  ✕ close (popup) / blank (non-popup)
+# Row 2:  header
+# Row 3:  ╭─ Split ─╮
+# Row 4:  │ \  Split right   │   → split-right
+# Row 5:  │ -  Split down    │   → split-down
+# Row 6:  │ z  Zoom/unzoom   │   → zoom
+# Row 7:  │ x  Close pane    │   → kill-pane
+# Row 8:  ╰──╯
+# Row 9:  ╭─ Layout ─╮
+# Row 10: │ 1  Even columns  │   → layout-even-horizontal
+# Row 11: │ 2  Even rows     │   → layout-even-vertical
+# Row 12: │ 3  Main left     │   → layout-main-vertical
+# Row 13: │ 4  Main top      │   → layout-main-horizontal
+# Row 14: │ 5  Tiled         │   → layout-tiled
+# Row 15: ╰──╯
+# Row 16: (empty)
+# Row 17: help text
+
+do_action() {
+    local action="$1"
+    local pf=()
+    [[ -n "$TMAX_PANE" ]] && pf=(-t "$TMAX_PANE")
+
+    case "$action" in
+        close)                    ;;
+        split-right)              tmux -L "$SOCK" split-window "${pf[@]}" -h -c "#{pane_current_path}" 2>/dev/null || true ;;
+        split-down)               tmux -L "$SOCK" split-window "${pf[@]}" -v -c "#{pane_current_path}" 2>/dev/null || true ;;
+        zoom)                     tmux -L "$SOCK" resize-pane  "${pf[@]}" -Z                           2>/dev/null || true ;;
+        kill-pane)                tmux -L "$SOCK" kill-pane    "${pf[@]}"                              2>/dev/null || true ;;
+        layout-even-horizontal)   tmux -L "$SOCK" select-layout "${pf[@]}" even-horizontal             2>/dev/null || true ;;
+        layout-even-vertical)     tmux -L "$SOCK" select-layout "${pf[@]}" even-vertical               2>/dev/null || true ;;
+        layout-main-vertical)     tmux -L "$SOCK" select-layout "${pf[@]}" main-vertical               2>/dev/null || true ;;
+        layout-main-horizontal)   tmux -L "$SOCK" select-layout "${pf[@]}" main-horizontal             2>/dev/null || true ;;
+        layout-tiled)             tmux -L "$SOCK" select-layout "${pf[@]}" tiled                       2>/dev/null || true ;;
+    esac
+    disable_mouse
+    exit 0
+}
+
+draw() {
+    local cols
+    cols=$(tput cols 2>/dev/null || echo 80)
+
+    local box_w=$(( cols - 4 ))
+    (( box_w > 42 )) && box_w=42
+    (( box_w < 28 )) && box_w=28
+    _BOX_W=$box_w
+
+    local inner_w=$(( box_w - 2 ))
+    local label_w=$(( box_w - 11 ))   # space for label: │  k  <label>  │ = 2+1+2+1+2+label+2+1 = 11+label
+    local h_inner; h_inner=$(printf '─%.0s' $(seq 1 $inner_w))
+
+    titled_border() {
+        local title=" $1 "
+        local fill_len=$(( box_w - 2 - 1 - ${#title} ))
+        (( fill_len < 1 )) && fill_len=1
+        local fill; fill=$(printf '─%.0s' $(seq 1 $fill_len))
+        printf '─%s%s' "$title" "$fill"
+    }
+
+    # menu_item key label  — prints one actionable row
+    menu_item() {
+        local key="$1" label="$2"
+        printf -v label "%-${label_w}s" "$label"
+        printf "  ${D}│${R}${TBG}  ${B}${CYAN}%s${R}${TBG}  %s  ${D}│${R}\033[K\n" "$key" "$label"
+    }
+
+    local BKSL=$'\\'
+
+    local frame
+    frame=$(
+        buf=$'\033[?25l\033[2J\033[H'
+
+        # Row 1: close button
+        if [[ "$POPUP_MODE" == "1" ]]; then
+            printf -v _x_str "%${box_w}s" "✕"
+            buf+="  ${D}${_x_str}${R}"$'\033[K\n'
+        else
+            buf+=$'\n\033[K'
+        fi
+
+        # Row 2: header
+        buf+="  ${B}⊞${R} Panes"$'\033[K\n'
+
+        # Row 3: Split section top border
+        buf+="  ${D}╭$(titled_border "Split")╮${R}"$'\033[K\n'
+
+        # Rows 4-7: split actions
+        buf+="$(menu_item "$BKSL" "Split right")"
+        buf+="$(menu_item "-"     "Split down")"
+        buf+="$(menu_item "z"     "Zoom / unzoom")"
+        buf+="$(menu_item "x"     "Close pane")"
+
+        # Row 8: Split section bottom border
+        buf+="  ${D}╰${h_inner}╯${R}"$'\033[K\n'
+
+        # Row 9: Layout section top border
+        buf+="  ${D}╭$(titled_border "Layout")╮${R}"$'\033[K\n'
+
+        # Rows 10-14: layout actions
+        buf+="$(menu_item "1" "Even columns")"
+        buf+="$(menu_item "2" "Even rows")"
+        buf+="$(menu_item "3" "Main left")"
+        buf+="$(menu_item "4" "Main top")"
+        buf+="$(menu_item "5" "Tiled")"
+
+        # Row 15: Layout section bottom border
+        buf+="  ${D}╰${h_inner}╯${R}"$'\033[K\n'
+
+        # Row 16: empty
+        buf+=$'\033[K\n'
+
+        # Row 17: help text
+        if [[ "$POPUP_MODE" == "1" ]]; then
+            buf+="  ${D}click or key  ·  q close${R}"$'\033[K\n'
+        else
+            buf+="  ${D}\\  -  z  x  1-5  ·  q close${R}"$'\033[K\n'
+        fi
+
+        printf '%s' "$buf"
+        printf '\033[J'
+    )
+    [[ "$frame" == "$_last_frame" ]] && return
+    _last_frame="$frame"
+    printf '%s' "$frame"
+}
+
+handle_mouse() {
+    local seq="$1"
+    [[ "$seq" == $'\033['* ]] || return
+    local content="${seq:2}"
+    [[ "$content" =~ ^'<'([0-9]+)';'([0-9]+)';'([0-9]+)([Mm]) ]] || return
+    local btn="${BASH_REMATCH[1]}" col="${BASH_REMATCH[2]}" row="${BASH_REMATCH[3]}" final="${BASH_REMATCH[4]}"
+    [[ "$final" == "m" || "$btn" != "0" ]] && return
+
+    # Close button (popup only, row 1)
+    [[ "$POPUP_MODE" == "1" && "$row" == "1" ]] && exit 0
+
+    # Fixed row → action table
+    case "$row" in
+        4)  do_action split-right ;;
+        5)  do_action split-down ;;
+        6)  do_action zoom ;;
+        7)  do_action kill-pane ;;
+        10) do_action layout-even-horizontal ;;
+        11) do_action layout-even-vertical ;;
+        12) do_action layout-main-vertical ;;
+        13) do_action layout-main-horizontal ;;
+        14) do_action layout-tiled ;;
+    esac
+}
+
+tput clear 2>/dev/null || printf '\033[2J\033[H'
+enable_mouse
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+SELF_MTIME=$(stat -c %Y "$SELF" 2>/dev/null)
+
+while true; do
+    draw
+
+    key=""
+    IFS= read -r -s -N 1 -t 0.2 key 2>/dev/null || true
+
+    if [[ -n "$key" ]]; then
+        if [[ "$key" == $'\033' ]]; then
+            rest="" c=""
+            IFS= read -r -s -N 1 -t 0.05 c 2>/dev/null || true
+            rest="$c"
+            if [[ "$c" == "[" ]]; then
+                while IFS= read -r -s -N 1 -t 0.05 c 2>/dev/null; do
+                    rest+="$c"
+                    [[ "$c" =~ [A-Za-z] ]] && break
+                done
+            fi
+            if [[ -z "$rest" ]]; then
+                do_action close   # bare ESC = close
+            else
+                handle_mouse $'\033'"$rest"
+            fi
+        else
+            case "$key" in
+                q|Q)         do_action close ;;
+                $'\\')       do_action split-right ;;
+                -)           do_action split-down ;;
+                z|Z)         do_action zoom ;;
+                x|X)         do_action kill-pane ;;
+                1)           do_action layout-even-horizontal ;;
+                2)           do_action layout-even-vertical ;;
+                3)           do_action layout-main-vertical ;;
+                4)           do_action layout-main-horizontal ;;
+                5)           do_action layout-tiled ;;
+            esac
+        fi
+    fi
+
+    new_mtime=$(stat -c %Y "$SELF" 2>/dev/null)
+    if [[ "$new_mtime" != "$SELF_MTIME" ]]; then
+        disable_mouse
+        exec env TMAX_SESSION="$SESSION" TMAX_POPUP="$POPUP_MODE" TMAX_PANE="$TMAX_PANE" "$SELF"
+    fi
+done
