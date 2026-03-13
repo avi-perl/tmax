@@ -13,8 +13,9 @@ CONF="$CONF_DIR/tmux.conf"
 COLORS=(colour1 colour2 colour3 colour4 colour5 colour6 colour208 colour82 colour165)
 DARK_COLORS=(colour88 colour22 colour58 colour18 colour53 colour23 colour130 colour64 colour89)
 # Nearly-black backgrounds with a subtle tint matching each palette color
-BG_TINTS=("#160404" "#041604" "#161604" "#040416" "#160416" "#041616" "#160404" "#041604" "#16040a")
+BG_TINTS=("#200404" "#042004" "#202004" "#040420" "#200420" "#042020" "#200404" "#042004" "#20040c")
 LABELS=(⌂ 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25)
+VERSION="0.16.0"
 
 pick_color() {
     local idx="$1"
@@ -49,7 +50,7 @@ set -ga terminal-overrides ",xterm*:Tc"
 set -as terminal-features ",xterm*:RGB"
 set -g history-limit 50000
 set -s escape-time 10
-set -g base-index 0
+set -g base-index 1
 set -g mouse on
 setw -g automatic-rename off
 set -g allow-rename off
@@ -58,7 +59,7 @@ set -g allow-rename off
 set -g status 2
 set -g status-position top
 set -g status-style "bg=colour232,fg=colour250"
-set -g status-left "#[fg=colour6,bold] ◈ tmax #[fg=colour240] "
+set -g status-left "#[fg=colour6,bold] ☰ tmax #[fg=colour240] "
 set -g status-left-length 20
 set -g status-right "#[fg=colour240] %H:%M "
 set -g status-right-length 10
@@ -72,15 +73,16 @@ set -g pane-border-style "fg=colour238"
 # ── Window tab styling ─────────────────────────────────────────────────────────
 set -g window-status-separator " "
 set -g status-interval 1
-set -g window-status-format         "#[fg=colour234]#[fg=#{@tmax_color},bg=colour235] #{@tmax_label} #{?#{==:#{window_index},0},,#{?#{@tmax_compact},#{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},#{?#{@tmax_indicator},#[fg=colour1]■ ,#{?#{@tmax_done},#[fg=colour2]✓ ,}},#[fg=colour2]▶︎ },#[fg=colour244\,bg=colour235] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},#{?#{@tmax_indicator},#[fg=colour1]■ #[fg=colour244],#{?#{@tmax_done},#[fg=colour2]✓ #[fg=colour244],}},#[fg=colour2]▶︎ #[fg=colour244]}#{window_name} }}#[bg=colour232]"
-set -g window-status-current-format "#[fg=colour240]#[fg=#{@tmax_color},bg=#{@tmax_dark_color},bold] #{@tmax_label} #{?#{==:#{window_index},0},,#[bg=#{@tmax_color}\,fg=colour235\,bold] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},#{?#{@tmax_indicator},#[fg=colour1]■ #[fg=colour235],},#[fg=colour2]▶︎ #[fg=colour235]}#{window_name} }#[bg=colour232,nobold]"
+set -g window-status-format         "#[fg=colour234]#[fg=#{@tmax_color},bg=colour235] #{@tmax_label} #{?#{@tmax_compact},#{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},#{?#{@tmax_indicator},#[fg=colour1]■ ,#{?#{@tmax_done},#[fg=colour2]✓ ,}},#[fg=colour2]▶︎ },#[fg=colour244\,bg=colour235] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},#{?#{@tmax_indicator},#[fg=colour1]■ #[fg=colour244],#{?#{@tmax_done},#[fg=colour2]✓ #[fg=colour244],}},#[fg=colour2]▶︎ #[fg=colour244]}#{window_name} }#[bg=colour232]"
+set -g window-status-current-format "#[fg=colour240]#[fg=#{@tmax_color},bg=#{@tmax_dark_color},bold] #{@tmax_label} #[bg=#{@tmax_color}\,fg=colour235\,bold] #{?#{m/r:^(bash|zsh|sh|fish|dash|ksh|tcsh|csh|tmax-home)$\,#{pane_current_command}},#{?#{@tmax_indicator},#[fg=colour1]■ #[fg=colour235],},#[fg=colour2]▶︎ #[fg=colour235]}#{window_name} #[bg=colour232,nobold]"
 
 # ── No prefix — Alt keys only ─────────────────────────────────────────────────
 unbind C-b
 set -g prefix None
 
 # ── Tab switching: Alt+h=home, Alt+1-9=tabs ──────────────────────────────────
-bind-key -n M-h select-window -t :=0
+bind-key -n M-h                  display-popup -E -w 66 -h 24 "TMAX_POPUP=1 '$SCRIPT_DIR/tmax-home'"
+bind-key -n MouseDown1StatusLeft display-popup -E -w 66 -h 24 "TMAX_POPUP=1 '$SCRIPT_DIR/tmax-home'"
 bind-key -n M-1 select-window -t :=1
 bind-key -n M-2 select-window -t :=2
 bind-key -n M-3 select-window -t :=3
@@ -94,9 +96,7 @@ bind-key -n M-9 select-window -t :=9
 # ── Tab management ────────────────────────────────────────────────────────────
 bind-key -n M-n command-prompt -p "Tab name:" "new-window -n '%%'"
 bind-key -n M-r command-prompt -I "#{window_name}" -p "Rename tab:" "rename-window '%%'"
-bind-key -n M-x if-shell '[ #{window_index} -ne 0 ]' \
-    'confirm-before -p "Close \"#{window_name}\"? (y/n)" kill-window' \
-    'detach-client'
+bind-key -n M-x confirm-before -p "Close \"#{window_name}\"? (y/n)" kill-window
 
 # ── Per-window background tint (global style reads each window's @tmax_bg_tint) ─
 set -g window-active-style "bg=#{@tmax_bg_tint}"
@@ -120,11 +120,10 @@ case "${1:-start}" in
         # Use the narrowest connected client
         width=$(tmux -L "$SOCK" list-clients -F "#{client_width}" 2>/dev/null | sort -n | head -1)
         [[ -z "$width" || "$width" -eq 0 ]] && exit 0
-        # Fixed overhead: status-left-length(20) + status-right-length(10) + home tab(4)
-        total=34
-        # Each non-home inactive tab: separator(1) + " label "(3) + " name "(name_len+2) = name_len+6
+        # Fixed overhead: status-left-length(20) + status-right-length(10)
+        total=30
+        # Each inactive tab: separator(1) + " label "(3) + " name "(name_len+2) = name_len+6
         while IFS=$'\t' read -r idx name; do
-            [[ "$idx" -eq 0 ]] && continue
             total=$((total + ${#name} + 6))
         done < <(tmux -L "$SOCK" list-windows -t "$session" -F "#{window_index}	#{window_name}" 2>/dev/null)
         if [[ "$total" -le "$width" ]]; then
@@ -175,15 +174,8 @@ case "${1:-start}" in
         gen_conf
 
         if ! tmux -L "$SOCK" has-session -t "$SESSION" 2>/dev/null; then
-            tmux -L "$SOCK" -f "$CONF" new-session -d -s "$SESSION" -n "home"
-            tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_color "colour6"
-            tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_dark_color "colour23"
-            tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_bg_tint "#000000"
-            tmux -L "$SOCK" set-option -t "$SESSION":0 -w window-active-style "bg=black"
-            tmux -L "$SOCK" set-option -t "$SESSION":0 -w window-style        "bg=black"
-            tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_start "$(date +%s)"
-            tmux -L "$SOCK" set-option -t "$SESSION":0 -w @tmax_label "⌂"
-            tmux -L "$SOCK" send-keys -t "$SESSION":0 "$SCRIPT_DIR/tmax-home" Enter
+            tmux -L "$SOCK" -f "$CONF" new-session -d -s "$SESSION" -n "shell"
+            "$SCRIPT" assign-color "$SESSION" 1
         fi
 
         exec tmux -L "$SOCK" attach-session -t "$SESSION"
@@ -258,12 +250,9 @@ EOF
                     [[ "${COLORS[$pi]}" == "$win_color" ]] && bg_tint="${BG_TINTS[$pi]}" && break
                 done
                 [[ -z "$bg_tint" ]] && bg_tint=$(pick_bg_tint "$idx")
-                # Home tab always has a black background
-                [[ "$idx" -eq 0 ]] && bg_tint="#000000"
                 tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w @tmax_bg_tint "$bg_tint" 2>/dev/null || true
                 tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w window-active-style "bg=$bg_tint" 2>/dev/null || true
                 tmux -L "$SOCK" set-option -t "$SESSION:$idx" -w window-style        "bg=$bg_tint" 2>/dev/null || true
-                [[ "$idx" -eq 0 ]] && tmux -L "$SOCK" set-option -t "$SESSION:0" -w @tmax_label "⌂" 2>/dev/null || true
             done < <(tmux -L "$SOCK" list-windows -t "$SESSION" -F '#{window_index}')
             "$SCRIPT" check-compact "$SESSION"
         fi
